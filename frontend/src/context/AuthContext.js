@@ -6,6 +6,7 @@ const AuthContext = createContext();
 const AUTH_ACTIONS = {
   LOGIN: 'LOGIN',
   LOGOUT: 'LOGOUT',
+  UPDATE_USER: 'UPDATE_USER',
   SET_LOADING: 'SET_LOADING',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR'
@@ -30,6 +31,14 @@ const authReducer = (state, action) => {
         isAuthenticated: false,
         user: null,
         token: null,
+        loading: false,
+        error: null
+      };
+
+    case AUTH_ACTIONS.UPDATE_USER:
+      return {
+        ...state,
+        user: { ...state.user, ...action.payload },
         loading: false,
         error: null
       };
@@ -222,6 +231,46 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
   };
 
+  const updateUser = async (userData) => {
+    try {
+      dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
+      dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
+
+      const response = await authenticatedFetch('http://localhost:5000/api/auth/update-profile', {
+        method: 'PUT',
+        body: JSON.stringify(userData)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Update user in state and localStorage
+        const updatedUser = { ...state.user, ...data.user };
+        localStorage.setItem('ecofinds-user', JSON.stringify(updatedUser));
+
+        dispatch({
+          type: AUTH_ACTIONS.UPDATE_USER,
+          payload: data.user
+        });
+
+        return { success: true, message: data.message || 'Profile updated successfully' };
+      } else {
+        dispatch({
+          type: AUTH_ACTIONS.SET_ERROR,
+          payload: data.message || 'Failed to update profile'
+        });
+        return { success: false, message: data.message || 'Failed to update profile' };
+      }
+    } catch (error) {
+      const errorMessage = 'Network error. Please try again.';
+      dispatch({
+        type: AUTH_ACTIONS.SET_ERROR,
+        payload: errorMessage
+      });
+      return { success: false, message: errorMessage };
+    }
+  };
+
   // Helper function to make authenticated API calls
   const authenticatedFetch = async (url, options = {}) => {
     const token = state.token || localStorage.getItem('ecofinds-token');
@@ -255,6 +304,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     clearError,
+    updateUser,
     authenticatedFetch
   };
 
@@ -275,3 +325,4 @@ export const useAuth = () => {
 };
 
 export { AUTH_ACTIONS };
+

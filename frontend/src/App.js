@@ -3,10 +3,12 @@ import './App.css';
 import AddProduct from './components/AddProduct';
 import CartPage from './components/CartPage';
 import Categories from './components/Categories';
+import Help from './components/Help';
 import Home from './components/Home';
 import Login from './components/Login';
 import MyListings from './components/MyListings';
 import ProductDetail from './components/ProductDetail';
+import UserPortal from './components/UserPortal';
 import UserProfile from './components/UserProfile';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
@@ -34,6 +36,14 @@ function App() {
 
   const handleShowProfile = () => {
     setCurrentView('profile');
+  };
+
+  const handleShowUserPortal = () => {
+    setCurrentView('userPortal');
+  };
+
+  const handleShowHelp = () => {
+    setCurrentView('help');
   };
 
   const handleShowMyListings = () => {
@@ -67,7 +77,8 @@ function App() {
               onShowCategories={handleShowCategories}
               onShowLogin={handleShowLogin}
               onShowProfile={handleShowProfile}
-              onShowMyListings={handleShowMyListings}
+              onShowDashboard={handleShowUserPortal}
+              onShowHelp={handleShowHelp}
               onShowProduct={handleShowProduct}
               refreshTrigger={refreshProducts} 
             />
@@ -79,6 +90,22 @@ function App() {
             <UserProfile 
               onBack={handleBackToHome}
               onShowMyListings={handleShowMyListings}
+            />
+          )}
+          {currentView === 'userPortal' && (
+            <UserPortal 
+              onBack={handleBackToHome}
+              onShowProduct={handleShowProduct}
+              onShowHelp={handleShowHelp}
+            />
+          )}
+          {currentView === 'help' && (
+            <Help onBack={handleBackToHome} />
+          )}
+          {currentView === 'myListings' && (
+            <MyListings 
+              onBack={handleBackToHome}
+              onShowProduct={handleShowProduct}
             />
           )}
           {currentView === 'myListings' && (

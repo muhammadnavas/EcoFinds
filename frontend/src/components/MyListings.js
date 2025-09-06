@@ -156,7 +156,7 @@ const MyListings = ({ onBack, onShowProduct }) => {
                     {listing.title}
                   </h3>
                   <p className="text-green-600 font-bold text-lg mb-2">
-                    ${parseFloat(listing.price).toFixed(2)}
+                    ₹{(parseFloat(listing.price) * 83).toLocaleString('en-IN')}
                   </p>
                   <p className="text-sm text-gray-600 mb-2 line-clamp-2">
                     {listing.description}

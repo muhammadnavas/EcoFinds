@@ -21,7 +21,7 @@ const CartSummary = ({ showTitle = true, className = "" }) => {
         
         <div className="flex justify-between text-sm">
           <span className="text-gray-600">Subtotal:</span>
-          <span className="font-medium">${getTotalPrice().toFixed(2)}</span>
+          <span className="font-medium">₹{(getTotalPrice() * 83).toLocaleString('en-IN')}</span>
         </div>
         
         <div className="flex justify-between text-sm">
@@ -33,7 +33,7 @@ const CartSummary = ({ showTitle = true, className = "" }) => {
         
         <div className="flex justify-between text-lg font-semibold">
           <span>Total:</span>
-          <span className="text-green-600">${getTotalPrice().toFixed(2)}</span>
+          <span className="text-green-600">₹{(getTotalPrice() * 83).toLocaleString('en-IN')}</span>
         </div>
       </div>
     </div>

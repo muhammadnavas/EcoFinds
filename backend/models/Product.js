@@ -38,8 +38,53 @@ const productSchema = new mongoose.Schema({
       return [this.imageUrl || 'https://via.placeholder.com/300x200?text=Product+Image'];
     }
   },
+  // Review stats (calculated fields)
+  averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+  reviewCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
   },
-});module.exports = mongoose.model('Product', productSchema);
+});
+
+// Virtual for reviews
+productSchema.virtual('reviews', {
+  ref: 'Review',
+  localField: '_id',
+  foreignField: 'product'
+});
+
+// Calculate review stats
+productSchema.methods.calculateReviewStats = async function() {
+  const Review = mongoose.model('Review');
+  
+  const stats = await Review.aggregate([
+    { $match: { product: this._id } },
+    {
+      $group: {
+        _id: null,
+        avgRating: { $avg: '$rating' },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+
+  if (stats.length > 0) {
+    this.averageRating = Math.round(stats[0].avgRating * 10) / 10; // Round to 1 decimal
+    this.reviewCount = stats[0].count;
+  } else {
+    this.averageRating = 0;
+    this.reviewCount = 0;
+  }
+
+  await this.save();
+};module.exports = mongoose.model('Product', productSchema);

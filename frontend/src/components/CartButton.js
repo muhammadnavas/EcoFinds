@@ -156,7 +156,7 @@ const CartSidebar = ({ onClose, onShowCart }) => {
             {/* Total */}
             <div className="flex items-center justify-between text-xl font-semibold">
               <span>Total:</span>
-              <span className="text-green-600">${getTotalPrice().toFixed(2)}</span>
+              <span className="text-green-600">₹{(getTotalPrice() * 83).toLocaleString('en-IN')}</span>
             </div>
 
             {/* Actions */}
@@ -214,7 +214,7 @@ const CartItem = ({ item, onRemove, onUpdateQuantity }) => {
       <div className="flex-1 min-w-0">
         <h4 className="font-medium text-base text-gray-900 truncate">{item.title}</h4>
         <p className="text-sm text-gray-500 mt-1">{item.category}</p>
-        <p className="text-lg font-semibold text-green-600 mt-2">${item.price}</p>
+        <p className="text-lg font-semibold text-green-600 mt-2">₹{(item.price * 83).toLocaleString('en-IN')}</p>
       </div>
 
       {/* Quantity Controls */}

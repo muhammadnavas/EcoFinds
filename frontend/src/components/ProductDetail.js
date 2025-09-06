@@ -1,36 +1,18 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import AddToCartButton from './AddToCartButton';
+import Logo from './Logo';
+import Reviews from './Reviews';
 
 const ProductDetail = ({ productId, onBack, onShowProduct }) => {
+  const { user, isAuthenticated, authenticatedFetch } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isImageZoomed, setIsImageZoomed] = useState(false);
-  const [reviews] = useState([
-    {
-      id: 1,
-      user: "Sarah M.",
-      rating: 5,
-      comment: "Excellent quality! Exactly as described and fast shipping.",
-      date: "2025-01-10"
-    },
-    {
-      id: 2,
-      user: "Mike R.",
-      rating: 4,
-      comment: "Good product, minor wear but great value for the price.",
-      date: "2025-01-05"
-    },
-    {
-      id: 3,
-      user: "Lisa K.",
-      rating: 5,
-      comment: "Outstanding quality and great seller communication.",
-      date: "2024-12-25"
-    }
-  ]);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -69,6 +51,50 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
       fetchRelatedProducts();
     }
   }, [productId]);
+
+  // Delete product function
+  const handleDeleteProduct = async () => {
+    if (!product || !isAuthenticated || !user) {
+      alert('You must be logged in to delete products');
+      return;
+    }
+
+    // Check if user is the owner of the product
+    const isOwner = product.seller?._id === user._id || 
+                   product.seller?.username === user.username ||
+                   product.sellerName === user.username;
+
+    if (!isOwner) {
+      alert('You can only delete your own products');
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${product.title}"? This action cannot be undone.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      setDeleting(true);
+      const response = await authenticatedFetch(`http://localhost:5000/api/products/${productId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        alert('Product deleted successfully!');
+        onBack(); // Navigate back to previous page
+      } else {
+        const data = await response.json();
+        alert(data.message || 'Failed to delete product');
+      }
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      alert('Failed to delete product. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Keyboard navigation for images
   useEffect(() => {
@@ -159,7 +185,7 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
     }
   };
 
-  // Generate multiple images for demo purposes
+  // Generate multiple demo images for better showcase
   const getProductImages = () => {
     if (!product) return [];
     
@@ -168,32 +194,21 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
       return product.images;
     }
     
-    // Otherwise, generate demo images from the main image
-    const baseImage = product.imageUrl || '/api/placeholder/600/600';
-    const images = [baseImage];
+    // Generate multiple demo images for better showcase
+    const baseImage = product.imageUrl || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=400&h=400&fit=crop&crop=center';
+    const demoImages = [
+      baseImage,
+      'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&h=400&fit=crop&crop=center',
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop&crop=center',
+      'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop&crop=center',
+      'https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=400&fit=crop&crop=center'
+    ];
     
-    // Add some demo variations (you can replace these with actual image URLs)
-    for (let i = 1; i <= 3; i++) {
-      images.push(`${baseImage}?variant=${i}`);
-    }
-    
-    return images;
+    // Return first 4 images for demo
+    return demoImages.slice(0, 4);
   };
 
   const productImages = getProductImages();
-
-  const renderStars = (rating) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <span
-        key={i}
-        className={`text-lg ${i < rating ? 'text-yellow-400' : 'text-gray-300'}`}
-      >
-        ★
-      </span>
-    ));
-  };
-
-  const averageRating = reviews.reduce((acc, review) => acc + review.rating, 0) / reviews.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -252,38 +267,40 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
       )}
 
       {/* Header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div className="bg-white shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex items-center justify-between">
             <button
               onClick={onBack}
-              className="flex items-center text-green-600 hover:text-green-700 transition duration-200"
+              className="flex items-center text-green-600 hover:text-green-700 transition duration-200 text-lg"
             >
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to Products
+              <span className="font-medium">Back to Products</span>
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">Product Details</h1>
-            <div className="w-24"></div>
+            <div className="flex items-center">
+              <Logo size="xl" variant="full" />
+              <h1 className="text-4xl font-bold text-gray-800 ml-5">Product Details</h1>
+            </div>
+            <div className="w-32"></div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          {/* Image Gallery */}
-          <div className="space-y-4">
-            {/* Main Image */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+          {/* Image Gallery - Medium sized */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Main Image - Medium size */}
             <div className="relative group">
               <img
-                src={productImages[selectedImageIndex] || '/api/placeholder/600/600'}
+                src={productImages[selectedImageIndex] || '/api/placeholder/400/400'}
                 alt={product.title}
-                className={`w-full rounded-lg shadow-lg cursor-pointer transition duration-300 ${
+                className={`w-full h-80 object-cover rounded-lg shadow-lg cursor-pointer transition duration-300 ${
                   isImageZoomed ? 'scale-110' : 'hover:scale-105'
                 }`}
                 onClick={handleImageClick}
-                style={{ aspectRatio: '1/1', objectFit: 'cover' }}
               />
               
               {/* Image counter */}
@@ -316,15 +333,15 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
               )}
             </div>
 
-            {/* Image Thumbnails */}
+            {/* Image Thumbnails Grid */}
             {productImages.length > 1 && (
-              <div className="flex space-x-2 overflow-x-auto pb-2">
+              <div className="grid grid-cols-4 gap-2">
                 {productImages.map((image, index) => (
                   <img
                     key={index}
                     src={image}
                     alt={`${product.title} ${index + 1}`}
-                    className={`flex-shrink-0 w-20 h-20 object-cover rounded-lg cursor-pointer transition duration-200 ${
+                    className={`w-full h-16 object-cover rounded-lg cursor-pointer transition duration-200 ${
                       selectedImageIndex === index 
                         ? 'ring-2 ring-green-500 scale-105' 
                         : 'hover:scale-105 hover:ring-2 hover:ring-gray-300'
@@ -336,20 +353,20 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
             )}
           </div>
 
-          {/* Product Information */}
-          <div className="space-y-6">
+          {/* Product Information - Takes more space */}
+          <div className="lg:col-span-2 space-y-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{product.title}</h1>
               <div className="flex items-center space-x-4 mb-4">
                 <span className="text-3xl font-bold text-green-600">
-                  ${parseFloat(product.price).toFixed(2)}
+                  ₹{(parseFloat(product.price) * 83).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                 </span>
-                <div className="flex items-center space-x-2">
-                  <div className="flex">
-                    {renderStars(Math.round(averageRating))}
-                  </div>
-                  <span className="text-gray-600">({reviews.length} reviews)</span>
-                </div>
+                <span className="text-lg text-gray-500 line-through">
+                  ₹{(parseFloat(product.price) * 83 * 1.2).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </span>
+                <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-sm font-semibold">
+                  17% OFF
+                </span>
               </div>
               <div className="flex items-center space-x-4 text-sm text-gray-600 mb-4">
                 <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full">
@@ -358,6 +375,17 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
                 <span>Condition: {product.condition || 'Good'}</span>
                 <span>Seller: {product.sellerName || product.seller?.username || 'Anonymous'}</span>
               </div>
+
+              {/* Rating Section - Moved to Reviews component */}
+              {/* <div className="flex items-center space-x-2 mb-4">
+                <div className="flex">
+                  {renderStars(Math.round(averageRating))}
+                </div>
+                <span className="text-gray-600">({reviews.length} reviews)</span>
+                <span className="text-sm text-green-600 font-medium">
+                  {averageRating.toFixed(1)} out of 5
+                </span>
+              </div> */}
             </div>
 
             <div>
@@ -372,46 +400,67 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
               <p className="text-gray-700 text-sm mt-1">Contact seller for more details</p>
             </div>
 
-            {/* Add to Cart Button */}
-            <div className="pt-4">
-              <AddToCartButton product={product} />
+            {/* Action Buttons */}
+            <div className="pt-4 space-y-4">
+              {/* Check if user owns this product */}
+              {isAuthenticated && user && (
+                (product.seller?._id === user._id || 
+                 product.seller?.username === user.username ||
+                 product.sellerName === user.username) ? (
+                  /* Owner controls */
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                      onClick={handleDeleteProduct}
+                      disabled={deleting}
+                      className={`flex-1 flex items-center justify-center px-6 py-3 border border-red-300 rounded-lg text-red-700 bg-red-50 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors ${
+                        deleting ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {deleting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-700 mr-2"></div>
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Delete Product
+                        </>
+                      )}
+                    </button>
+                    <button className="flex-1 flex items-center justify-center px-6 py-3 border border-blue-300 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit Product
+                    </button>
+                  </div>
+                ) : (
+                  /* Regular user - Add to Cart */
+                  <AddToCartButton product={product} />
+                )
+              )}
+              
+              {/* Guest user - Add to Cart */}
+              {!isAuthenticated && (
+                <AddToCartButton product={product} />
+              )}
             </div>
           </div>
         </div>
 
         {/* Reviews Section */}
         <div className="mb-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Customer Reviews</h2>
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center mb-6">
-              <div className="flex items-center space-x-2">
-                <span className="text-2xl font-bold text-gray-900">
-                  {averageRating.toFixed(1)}
-                </span>
-                <div className="flex">
-                  {renderStars(Math.round(averageRating))}
-                </div>
-                <span className="text-gray-600">({reviews.length} reviews)</span>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              {reviews.map((review) => (
-                <div key={review.id} className="border-b border-gray-200 pb-4 last:border-b-0 last:pb-0">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-semibold text-gray-900">{review.user}</span>
-                      <div className="flex">
-                        {renderStars(review.rating)}
-                      </div>
-                    </div>
-                    <span className="text-sm text-gray-500">{review.date}</span>
-                  </div>
-                  <p className="text-gray-700">{review.comment}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <Reviews 
+            productId={productId} 
+            productTitle={product.title}
+            onReviewAdded={() => {
+              // Optional: refresh product data or show success message
+              console.log('Review added successfully!');
+            }} 
+          />
         </div>
 
         {/* Related Products */}
@@ -434,7 +483,9 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
                     <h3 className="font-semibold text-gray-900 mb-2 truncate">
                       {relatedProduct.title}
                     </h3>
-                    <p className="text-green-600 font-bold">${parseFloat(relatedProduct.price).toFixed(2)}</p>
+                    <p className="text-green-600 font-bold">
+                      ₹{(parseFloat(relatedProduct.price) * 83).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    </p>
                     <p className="text-sm text-gray-600">{relatedProduct.sellerName || 'Anonymous'}</p>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 //src/components/Login.js
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const Login = ({ onBack }) => {
@@ -109,7 +109,17 @@ const Login = ({ onBack }) => {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="bg-white rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-4 shadow-lg">
-            <span className="text-2xl font-bold text-green-600">🌱</span>
+            {/* New EcoFinds Logo with green and purple leaf design */}
+            <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+              {/* Green leaf */}
+              <path d="M20 50 Q50 20 80 50 Q50 30 20 50" fill="#22c55e" />
+              {/* Purple leaf overlay */}
+              <path d="M40 50 Q70 20 80 50 Q65 30 40 50" fill="#8b5cf6" />
+              {/* Base arch - green */}
+              <path d="M10 60 Q30 40 50 60 Q70 40 90 60 Q70 70 50 60 Q30 70 10 60" fill="#16a34a" />
+              {/* Base arch - purple */}
+              <path d="M20 70 Q40 50 60 70 Q80 50 90 70 Q80 80 60 70 Q40 80 20 70" fill="#7c3aed" />
+            </svg>
           </div>
           <h1 className="text-4xl font-bold text-white mb-2">EcoFinds</h1>
           <p className="text-green-100">Sustainable Second-Hand Marketplace</p>

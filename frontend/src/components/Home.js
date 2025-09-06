@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import AddToCartButton from './AddToCartButton';
 import CartButton from './CartButton';
+import EnhancedSearch from './EnhancedSearch';
+import HeaderLogo from './HeaderLogo';
+import HelpWidget from './HelpWidget';
 
 const Home = ({ 
   onShowAddProduct, 
@@ -9,6 +12,8 @@ const Home = ({
   onShowCategories, 
   onShowLogin,
   onShowProfile,
+  onShowDashboard,
+  onShowHelp,
   onShowProduct,
   refreshTrigger
 }) => {
@@ -59,11 +64,35 @@ const Home = ({
     fetchProducts();
   }, [refreshTrigger]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (searchParams = {}) => {
     try {
-      const apiUrl = (process.env.REACT_APP_API_URL || 'http://localhost:5000/api') + '/products';
+      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
       
-      const response = await fetch(apiUrl);
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      
+      if (searchParams.search) {
+        queryParams.append('search', searchParams.search);
+      }
+      if (searchParams.category && searchParams.category !== 'all') {
+        queryParams.append('category', searchParams.category);
+      }
+      if (searchParams.minPrice) {
+        queryParams.append('minPrice', searchParams.minPrice);
+      }
+      if (searchParams.maxPrice) {
+        queryParams.append('maxPrice', searchParams.maxPrice);
+      }
+      if (searchParams.sortBy) {
+        queryParams.append('sortBy', searchParams.sortBy);
+      }
+      if (searchParams.sortOrder) {
+        queryParams.append('sortOrder', searchParams.sortOrder);
+      }
+      
+      const url = `${apiUrl}/products${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      
+      const response = await fetch(url);
       
       if (response.ok) {
         const data = await response.json();
@@ -85,25 +114,44 @@ const Home = ({
     setLoading(false);
   };
 
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch = product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  // Enhanced search handler
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    fetchProducts({
+      search: query,
+      category: selectedCategory
+    });
+  };
+
+  // Category change handler
+  const handleCategoryChange = (category) => {
+    setSelectedCategory(category);
+    fetchProducts({
+      search: searchQuery,
+      category: category
+    });
+  };
 
   const handleLogoutClick = () => {
     logout();
     setIsMenuOpen(false);
   };
 
-  const ProductCard = ({ product, onShowProduct }) => {
+  // Handle product deletion
+  const handleProductDeleted = (deletedProductId) => {
+    setProducts(prevProducts => 
+      prevProducts.filter(product => product._id !== deletedProductId)
+    );
+  };
+
+  const ProductCard = ({ product, onShowProduct, onProductDeleted }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     const handleProductClick = (e) => {
-      // Don't navigate if clicking on the add to cart button
-      if (e.target.closest('.add-to-cart-button')) {
+      // Don't navigate if clicking on the add to cart button or delete button
+      if (e.target.closest('.add-to-cart-button') || e.target.closest('.delete-product-button')) {
         return;
       }
       if (onShowProduct) {
@@ -111,11 +159,90 @@ const Home = ({
       }
     };
 
+    const handleDeleteProduct = async (e) => {
+      e.stopPropagation();
+      
+      if (!isAuthenticated || !user) {
+        alert('You must be logged in to delete products');
+        return;
+      }
+
+      // Check if user is the owner of the product
+      const isOwner = product.seller?._id === user._id || 
+                     product.seller?.username === user.username ||
+                     product.sellerName === user.username;
+
+      if (!isOwner) {
+        alert('You can only delete your own products');
+        return;
+      }
+
+      const confirmDelete = window.confirm(
+        `Are you sure you want to delete "${product.title}"? This action cannot be undone.`
+      );
+
+      if (!confirmDelete) return;
+
+      try {
+        setDeleting(true);
+        const response = await fetch(`http://localhost:5000/api/products/${product._id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (response.ok) {
+          alert('Product deleted successfully!');
+          if (onProductDeleted) {
+            onProductDeleted(product._id);
+          }
+        } else {
+          const data = await response.json();
+          alert(data.message || 'Failed to delete product');
+        }
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        alert('Failed to delete product. Please try again.');
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+    // Check if current user owns this product
+    const isOwner = isAuthenticated && user && (
+      product.seller?._id === user._id || 
+      product.seller?.username === user.username ||
+      product.sellerName === user.username
+    );
+
     return (
       <div 
-        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden cursor-pointer"
+        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden cursor-pointer relative"
         onClick={handleProductClick}
       >
+        {/* Delete button for product owners */}
+        {isOwner && (
+          <div className="absolute top-2 right-2 z-10 delete-product-button">
+            <button
+              onClick={handleDeleteProduct}
+              disabled={deleting}
+              className={`p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors ${
+                deleting ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              title="Delete Product"
+            >
+              {deleting ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+            </button>
+          </div>
+        )}
+
         <div className="relative w-full h-48 bg-gray-200">
           {!imageLoaded && !imageError && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -145,7 +272,7 @@ const Home = ({
           </p>
           <div className="flex items-center justify-between">
             <span className="text-2xl font-bold text-green-600">
-              ${product.price}
+              ₹{(parseFloat(product.price) * 83).toLocaleString('en-IN')}
             </span>
             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
               {product.category}
@@ -176,54 +303,62 @@ const Home = ({
       {/* Enhanced Header */}
       <header className="bg-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-24">
             {/* Logo */}
             <div className="flex items-center">
-              <div className="bg-green-600 rounded-lg w-10 h-10 flex items-center justify-center mr-3">
-                <span className="text-white font-bold text-lg">🌱</span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800">EcoFinds</h1>
-                <p className="text-xs text-gray-500 -mt-1">Sustainable Marketplace</p>
-              </div>
+              <HeaderLogo />
             </div>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              <button className="text-gray-700 hover:text-green-600 font-medium">Home</button>
+              <button className="text-gray-700 hover:text-green-600 font-medium text-lg">Home</button>
               <button 
                 onClick={onShowCategories}
-                className="text-gray-700 hover:text-green-600 font-medium"
+                className="text-gray-700 hover:text-green-600 font-medium text-lg"
               >
                 Categories
               </button>
               <button 
                 onClick={onShowAddProduct}
-                className="text-gray-700 hover:text-green-600 font-medium"
+                className="text-gray-700 hover:text-green-600 font-medium text-lg"
               >
                 Sell
               </button>
-              <button className="text-gray-700 hover:text-green-600 font-medium">Help</button>
+              <button 
+                onClick={onShowHelp}
+                className="text-gray-700 hover:text-green-600 font-medium text-lg"
+              >
+                Help
+              </button>
             </nav>
 
             {/* User Actions */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-6">
               {/* Cart */}
               <CartButton onShowCart={onShowCart} />
 
               {/* User Menu */}
               {isAuthenticated && user ? (
-                <div className="hidden md:flex items-center space-x-2">
+                <div className="hidden md:flex items-center space-x-3">
+                  <button
+                    onClick={onShowDashboard}
+                    className="flex items-center space-x-2 bg-green-100 text-green-700 rounded-full px-4 py-3 hover:bg-green-200 transition-colors text-base"
+                  >
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                    </svg>
+                    <span className="font-medium">Dashboard</span>
+                  </button>
                   <button
                     onClick={onShowProfile}
-                    className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-2 hover:bg-gray-200 transition-colors"
+                    className="flex items-center space-x-2 bg-gray-100 rounded-full px-4 py-3 hover:bg-gray-200 transition-colors text-base"
                   >
-                    <UserIcon size={20} />
-                    <span className="text-sm font-medium">{user.username || user.name}</span>
+                    <UserIcon size={24} />
+                    <span className="font-medium">{user.username || user.name}</span>
                   </button>
                   <button 
                     onClick={handleLogoutClick}
-                    className="text-sm text-gray-600 hover:text-green-600 transition-colors"
+                    className="text-base text-gray-600 hover:text-green-600 transition-colors font-medium"
                   >
                     Logout
                   </button>
@@ -232,13 +367,13 @@ const Home = ({
                 <div className="hidden md:flex items-center space-x-4">
                   <button 
                     onClick={onShowLogin}
-                    className="text-green-600 hover:text-green-700 font-medium transition-colors"
+                    className="text-green-600 hover:text-green-700 font-medium transition-colors text-lg"
                   >
                     Login
                   </button>
                   <button 
                     onClick={onShowLogin}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                    className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors text-lg font-medium"
                   >
                     Register
                   </button>
@@ -247,10 +382,10 @@ const Home = ({
 
               {/* Mobile Menu Button */}
               <button 
-                className="md:hidden p-2"
+                className="md:hidden p-3"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
               >
-                {isMenuOpen ? <XIcon size={24} /> : <MenuIcon size={24} />}
+                {isMenuOpen ? <XIcon size={28} /> : <MenuIcon size={28} />}
               </button>
             </div>
           </div>
@@ -259,14 +394,14 @@ const Home = ({
         {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden bg-white border-t shadow-lg">
-            <div className="px-4 py-4 space-y-4">
-              <button className="block text-gray-700 hover:text-green-600 font-medium">Home</button>
+            <div className="px-4 py-6 space-y-6">
+              <button className="block text-gray-700 hover:text-green-600 font-medium text-lg">Home</button>
               <button 
                 onClick={() => {
                   onShowCategories();
                   setIsMenuOpen(false);
                 }}
-                className="block text-gray-700 hover:text-green-600 font-medium"
+                className="block text-gray-700 hover:text-green-600 font-medium text-lg"
               >
                 Categories
               </button>
@@ -275,39 +410,59 @@ const Home = ({
                   onShowAddProduct();
                   setIsMenuOpen(false);
                 }}
-                className="block text-gray-700 hover:text-green-600 font-medium"
+                className="block text-gray-700 hover:text-green-600 font-medium text-lg"
               >
                 Sell
               </button>
-              <button className="block text-gray-700 hover:text-green-600 font-medium">Help</button>
+              <button 
+                onClick={() => {
+                  onShowHelp();
+                  setIsMenuOpen(false);
+                }}
+                className="block text-gray-700 hover:text-green-600 font-medium text-lg"
+              >
+                Help
+              </button>
               <div className="pt-4 border-t">
                 {isAuthenticated && user ? (
-                  <div className="space-y-2">
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => {
+                        onShowDashboard();
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex items-center space-x-3 w-full text-left hover:text-green-600 transition-colors text-lg"
+                    >
+                      <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
+                      </svg>
+                      <span className="font-medium">Dashboard</span>
+                    </button>
                     <button
                       onClick={() => {
                         onShowProfile();
                         setIsMenuOpen(false);
                       }}
-                      className="flex items-center space-x-2 w-full text-left hover:text-green-600 transition-colors"
+                      className="flex items-center space-x-3 w-full text-left hover:text-green-600 transition-colors text-lg"
                     >
-                      <UserIcon size={20} />
+                      <UserIcon size={24} />
                       <span className="font-medium">{user.username || user.name}</span>
                     </button>
                     <button 
                       onClick={handleLogoutClick}
-                      className="text-sm text-gray-600 hover:text-green-600 transition-colors"
+                      className="text-base text-gray-600 hover:text-green-600 transition-colors font-medium"
                     >
                       Logout
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <button 
                       onClick={() => {
                         onShowLogin();
                         setIsMenuOpen(false);
                       }}
-                      className="block w-full text-left text-green-600 hover:text-green-700 font-medium"
+                      className="block w-full text-left text-green-600 hover:text-green-700 font-medium text-lg"
                     >
                       Login
                     </button>
@@ -316,7 +471,7 @@ const Home = ({
                         onShowLogin();
                         setIsMenuOpen(false);
                       }}
-                      className="block w-full text-left bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                      className="block w-full text-left bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors text-lg font-medium"
                     >
                       Register
                     </button>
@@ -356,42 +511,17 @@ const Home = ({
           </div>
         </div>
 
-        {/* Search and Filter */}
+        {/* Enhanced Search and Filter */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search Bar */}
-            <div className="flex-1">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search for products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                />
-                <div className="absolute left-3 top-3.5">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
-              </div>
-            </div>
-
-            {/* Category Filter */}
-            <div className="lg:w-64">
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full py-3 px-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-              >
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.icon} {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          <EnhancedSearch
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={handleCategoryChange}
+            categories={categories}
+            products={products}
+            onSearch={handleSearch}
+          />
         </div>
 
         {/* Product Grid */}
@@ -399,12 +529,12 @@ const Home = ({
           <div className="flex items-center justify-between">
             <h3 className="text-2xl font-bold text-gray-800">
               {searchQuery || selectedCategory !== 'all' 
-                ? `Showing ${filteredProducts.length} result(s)`
+                ? `Showing ${products.length} result(s)`
                 : 'Latest Products'
               }
             </h3>
             <div className="text-sm text-gray-500">
-              {filteredProducts.length} products found
+              {products.length} products found
             </div>
           </div>
         </div>
@@ -414,10 +544,15 @@ const Home = ({
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading amazing products...</p>
           </div>
-        ) : filteredProducts.length > 0 ? (
+        ) : products.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredProducts.map((product) => (
-              <ProductCard key={product._id} product={product} onShowProduct={onShowProduct} />
+            {products.map((product) => (
+              <ProductCard 
+                key={product._id} 
+                product={product} 
+                onShowProduct={onShowProduct} 
+                onProductDeleted={handleProductDeleted}
+              />
             ))}
           </div>
         ) : (
@@ -446,8 +581,17 @@ const Home = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center mb-4">
-                <div className="bg-green-600 rounded-lg w-8 h-8 flex items-center justify-center mr-2">
-                  <span className="text-white">🌱</span>
+                <div className="bg-white rounded-lg w-8 h-8 flex items-center justify-center mr-2 p-1">
+                  <svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+                    {/* Green leaf */}
+                    <path d="M9.6 24 Q24 9.6 38.4 24 Q24 14.4 9.6 24" fill="#22c55e" />
+                    {/* Purple leaf overlay */}
+                    <path d="M19.2 24 Q33.6 9.6 38.4 24 Q31.2 14.4 19.2 24" fill="#8b5cf6" />
+                    {/* Base arch - green */}
+                    <path d="M4.8 28.8 Q14.4 19.2 24 28.8 Q33.6 19.2 43.2 28.8 Q33.6 33.6 24 28.8 Q14.4 33.6 4.8 28.8" fill="#16a34a" />
+                    {/* Base arch - purple */}
+                    <path d="M9.6 33.6 Q19.2 24 28.8 33.6 Q38.4 24 43.2 33.6 Q38.4 38.4 28.8 33.6 Q19.2 38.4 9.6 33.6" fill="#7c3aed" />
+                  </svg>
                 </div>
                 <span className="text-xl font-bold">EcoFinds</span>
               </div>
@@ -473,7 +617,7 @@ const Home = ({
               <ul className="space-y-2 text-gray-400">
                 <li><button className="hover:text-white transition-colors">About Us</button></li>
                 <li><button className="hover:text-white transition-colors">Contact</button></li>
-                <li><button className="hover:text-white transition-colors">Help Center</button></li>
+                <li><button onClick={onShowHelp} className="hover:text-white transition-colors">Help Center</button></li>
                 <li><button className="hover:text-white transition-colors">Privacy Policy</button></li>
               </ul>
             </div>
@@ -500,6 +644,9 @@ const Home = ({
           </div>
         </div>
       </footer>
+
+      {/* Floating Help Widget */}
+      <HelpWidget onShowHelp={onShowHelp} />
     </div>
   );
 };

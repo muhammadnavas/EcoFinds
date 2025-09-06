@@ -120,7 +120,7 @@ const CartPage = ({ onBack }) => {
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">${getTotalPrice().toFixed(2)}</span>
+                  <span className="font-medium">₹{(getTotalPrice() * 83).toLocaleString('en-IN')}</span>
                 </div>
                 
                 <div className="flex justify-between">
@@ -130,7 +130,7 @@ const CartPage = ({ onBack }) => {
                 
                 <div className="flex justify-between">
                   <span className="text-gray-600">Tax:</span>
-                  <span className="font-medium">${(getTotalPrice() * 0.08).toFixed(2)}</span>
+                  <span className="font-medium">₹{(getTotalPrice() * 83 * 0.08).toLocaleString('en-IN')}</span>
                 </div>
                 
                 <hr className="my-4" />
@@ -138,7 +138,7 @@ const CartPage = ({ onBack }) => {
                 <div className="flex justify-between text-lg font-semibold">
                   <span>Total:</span>
                   <span className="text-green-600">
-                    ${(getTotalPrice() * 1.08).toFixed(2)}
+                    ₹{(getTotalPrice() * 83 * 1.08).toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>
@@ -199,7 +199,7 @@ const CartPageItem = ({ item, onRemove, onUpdateQuantity }) => {
         <h3 className="font-medium text-gray-900">{item.title}</h3>
         <p className="text-sm text-gray-500 mt-1">{item.category}</p>
         <p className="text-sm text-gray-600 mt-1 line-clamp-2">{item.description}</p>
-        <p className="text-lg font-semibold text-green-600 mt-2">${item.price}</p>
+        <p className="text-lg font-semibold text-green-600 mt-2">₹{(item.price * 83).toLocaleString('en-IN')}</p>
       </div>
 
       {/* Quantity Controls */}
