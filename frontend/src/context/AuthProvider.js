@@ -1,93 +1,137 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { auth, googleProvider } from "../firebase";
-import {
-  signInWithPopup,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-} from "firebase/auth";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
-
-// ✅ helper to create username
-const generateUsername = (email) => {
-  if (!email) return "user_" + Math.floor(100 + Math.random() * 900);
-  const prefix = email.split("@")[0].slice(0, 4);
-  const randomNum = Math.floor(100 + Math.random() * 900);
-  return `${prefix}_${randomNum}`;
-};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ Google login
-  const loginWithGoogle = async () => {
-    const result = await signInWithPopup(auth, googleProvider);
-    const firebaseUser = result.user;
-
-    const username = generateUsername(firebaseUser.email);
-
-    const userData = {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      name: firebaseUser.displayName,
-      username: username,
-    };
-
-    setUser(userData);
-    localStorage.setItem("ecofinds-user", JSON.stringify(userData));
-  };
-
-  // ✅ Email login
+  // Backend login
   const login = async (email, password) => {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    const firebaseUser = result.user;
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const username = generateUsername(firebaseUser.email);
+      if (!response.ok) {
+        throw new Error('Login failed');
+      }
 
-    const userData = {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      name: firebaseUser.displayName || firebaseUser.email,
-      username: username,
-    };
+      const data = await response.json();
+      
+      const userData = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name,
+        username: data.user.username,
+        token: data.token,
+      };
 
-    setUser(userData);
-    localStorage.setItem("ecofinds-user", JSON.stringify(userData));
+      setUser(userData);
+      localStorage.setItem("ecofinds-user", JSON.stringify(userData));
+      localStorage.setItem("ecofinds-token", data.token);
+      
+      return userData;
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
+    }
   };
 
-  // ✅ Register with email
-  const register = async (email, password) => {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    const firebaseUser = result.user;
+  // Register with email
+  const register = async (email, password, name) => {
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name }),
+      });
 
-    const username = generateUsername(firebaseUser.email);
+      if (!response.ok) {
+        throw new Error('Registration failed');
+      }
 
-    const userData = {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      name: firebaseUser.displayName || firebaseUser.email,
-      username: username,
-    };
+      const data = await response.json();
+      
+      const userData = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.name,
+        username: data.user.username,
+        token: data.token,
+      };
 
-    setUser(userData);
-    localStorage.setItem("ecofinds-user", JSON.stringify(userData));
+      setUser(userData);
+      localStorage.setItem("ecofinds-user", JSON.stringify(userData));
+      localStorage.setItem("ecofinds-token", data.token);
+      
+      return userData;
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error;
+    }
   };
 
-  // ✅ Logout
+  // Logout
   const logout = async () => {
-    await signOut(auth);
     setUser(null);
     localStorage.removeItem("ecofinds-user");
+    localStorage.removeItem("ecofinds-token");
   };
 
-  // ✅ Keep user logged in
+  // Update user data
+  const updateUser = (updatedUserData) => {
+    const newUserData = { ...user, ...updatedUserData };
+    setUser(newUserData);
+    localStorage.setItem("ecofinds-user", JSON.stringify(newUserData));
+  };
+
+  // Authenticated fetch function
+  const authenticatedFetch = async (url, options = {}) => {
+    const token = localStorage.getItem('ecofinds-token');
+    
+    const config = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+    };
+
+    const response = await fetch(url, config);
+    
+    if (response.status === 401) {
+      // Token expired or invalid
+      logout();
+      throw new Error('Authentication required');
+    }
+    
+    return response;
+  };
+
+  // Keep user logged in
   useEffect(() => {
     const storedUser = localStorage.getItem("ecofinds-user");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const storedToken = localStorage.getItem("ecofinds-token");
+    
+    if (storedUser && storedToken) {
+      try {
+        const userData = JSON.parse(storedUser);
+        userData.token = storedToken;
+        setUser(userData);
+      } catch (error) {
+        console.error('Error parsing stored user data:', error);
+        localStorage.removeItem("ecofinds-user");
+        localStorage.removeItem("ecofinds-token");
+      }
     }
     setLoading(false);
   }, []);
@@ -97,7 +141,8 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
-    loginWithGoogle,
+    updateUser,
+    authenticatedFetch,
     isAuthenticated: !!user,
   };
 

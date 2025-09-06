@@ -1,15 +1,5 @@
 // src/context/AuthContext.js
 import { createContext, useContext, useEffect, useReducer } from 'react';
-import { auth, googleProvider } from '../firebase';
-import { signInWithPopup } from 'firebase/auth';
-
-// --- Helper to generate username if Google displayName is missing ---
-const generateUsername = (email) => {
-  if (!email) return "user_" + Math.floor(100 + Math.random() * 900);
-  const prefix = email.split("@")[0].slice(0, 4);
-  const randomNum = Math.floor(100 + Math.random() * 900);
-  return `${prefix}_${randomNum}`;
-};
 
 const AuthContext = createContext();
 
@@ -35,7 +25,14 @@ const authReducer = (state, action) => {
         loading: false,
         error: null
       };
-    case AUTH_ACTIONS.LOGOUT:
+          case AUTH_ACTIONS.UPDATE_USER:
+        return {
+          ...state,
+          user: { ...state.user, ...action.payload },
+          loading: false,
+          error: null
+        };
+      case AUTH_ACTIONS.LOGOUT:
       return {
         ...state,
         isAuthenticated: false,
@@ -79,21 +76,50 @@ const initialState = {
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Check for existing token/user in localStorage
+  // Check for existing token on mount
   useEffect(() => {
-    const user = localStorage.getItem('ecofinds-user');
-    const token = localStorage.getItem('ecofinds-token');
-    if (user && token) {
-      dispatch({
-        type: AUTH_ACTIONS.LOGIN,
-        payload: {
-          user: JSON.parse(user),
-          token
+    const checkAuth = async () => {
+      const token = localStorage.getItem('ecofinds-token');
+      const user = localStorage.getItem('ecofinds-user');
+
+      if (token && user) {
+        try {
+          // Verify token with backend
+          const response = await fetch('http://localhost:5000/api/auth/me', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            dispatch({
+              type: AUTH_ACTIONS.LOGIN,
+              payload: {
+                user: data.user,
+                token: token
+              }
+            });
+          } else {
+            // Token is invalid, clear storage
+            localStorage.removeItem('ecofinds-token');
+            localStorage.removeItem('ecofinds-user');
+            dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
+          }
+        } catch (error) {
+          console.error('Auth check failed:', error);
+          localStorage.removeItem('ecofinds-token');
+          localStorage.removeItem('ecofinds-user');
+          dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
         }
-      });
-    } else {
-      dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
-    }
+      } else {
+        dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: false });
+      }
+    };
+
+    checkAuth();
   }, []);
 
   // Normal login
@@ -121,8 +147,9 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message || 'Login failed' };
       }
     } catch (error) {
-      dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: 'Network error. Please try again.' });
-      return { success: false, message: 'Network error. Please try again.' };
+      const errorMessage = 'Network error. Please try again.';
+      dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -151,43 +178,49 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: data.message || 'Registration failed' };
       }
     } catch (error) {
-      dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: 'Network error. Please try again.' });
-      return { success: false, message: 'Network error. Please try again.' };
+      const errorMessage = 'Network error. Please try again.';
+      dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: errorMessage });
+      return { success: false, message: errorMessage };
     }
   };
 
-  // Google login with Firebase
-  const loginWithGoogle = async () => {
+  const updateUser = async (userData) => {
     try {
       dispatch({ type: AUTH_ACTIONS.SET_LOADING, payload: true });
       dispatch({ type: AUTH_ACTIONS.CLEAR_ERROR });
 
-      const result = await signInWithPopup(auth, googleProvider);
-      const googleUser = result.user;
+      const response = await authenticatedFetch('http://localhost:5000/api/auth/update-profile', {
+        method: 'PUT',
+        body: JSON.stringify(userData)
+      });
 
-      // Ensure username exists
-      const username = googleUser.displayName || generateUsername(googleUser.email);
+      const data = await response.json();
 
-      const user = {
-        uid: googleUser.uid,
-        displayName: googleUser.displayName,
-        email: googleUser.email,
-        photoURL: googleUser.photoURL,
-        username
-      };
+      if (response.ok) {
+        // Update user in state and localStorage
+        const updatedUser = { ...state.user, ...data.user };
+        localStorage.setItem('ecofinds-user', JSON.stringify(updatedUser));
 
-      // Save in localStorage
-      localStorage.setItem('ecofinds-user', JSON.stringify(user));
-      const token = await googleUser.getIdToken();
-      localStorage.setItem('ecofinds-token', token);
+        dispatch({
+          type: AUTH_ACTIONS.UPDATE_USER,
+          payload: data.user
+        });
 
-      dispatch({ type: AUTH_ACTIONS.LOGIN, payload: { user, token } });
-
-      return { success: true };
+        return { success: true, message: data.message || 'Profile updated successfully' };
+      } else {
+        dispatch({
+          type: AUTH_ACTIONS.SET_ERROR,
+          payload: data.message || 'Failed to update profile'
+        });
+        return { success: false, message: data.message || 'Failed to update profile' };
+      }
     } catch (error) {
-      console.error('Google login failed:', error);
-      dispatch({ type: AUTH_ACTIONS.SET_ERROR, payload: 'Google login failed' });
-      return { success: false, message: 'Google login failed' };
+      const errorMessage = 'Network error. Please try again.';
+      dispatch({
+        type: AUTH_ACTIONS.SET_ERROR,
+        payload: errorMessage
+      });
+      return { success: false, message: errorMessage };
     }
   };
 
@@ -225,7 +258,6 @@ export const AuthProvider = ({ children }) => {
     ...state,
     login,
     register,
-    loginWithGoogle,
     logout,
     clearError,
     updateUser,

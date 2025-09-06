@@ -1,8 +1,6 @@
 //src/components/Login.js
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { auth, googleProvider } from '../firebase';
-import { signInWithPopup } from 'firebase/auth';
 
 const Login = ({ onBack }) => {
   const { login, register, loading, error, clearError } = useAuth();
@@ -102,33 +100,6 @@ const Login = ({ onBack }) => {
   };
 
   const displayError = formError || error;
-
-  // **Google Login Handler**
-  const handleGoogleLogin = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      console.log("Google user:", user);
-
-      // ✅ Generate username from email (first 4 chars + random 3 digits)
-      const username = generateUsername(user.email);
-
-      // ✅ Store enriched user object
-      const userData = {
-        uid: user.uid,
-        email: user.email,
-        name: user.displayName || user.email,
-        username: username,
-      };
-
-      localStorage.setItem('ecofinds-user', JSON.stringify(userData));
-
-      if (onBack) onBack(); // redirect after successful login
-    } catch (error) {
-      console.error("Google login failed", error);
-      setFormError('Google login failed. Please try again.');
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center p-4">
@@ -265,18 +236,6 @@ const Login = ({ onBack }) => {
               )}
             </button>
           </form>
-
-          {/* Google Login Button */}
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center py-3 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-200"
-            >
-              <img src="/google-logo.png" alt="Google" className="w-5 h-5 mr-2" />
-              Continue with Google
-            </button>
-          </div>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
