@@ -13,10 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecofinds', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ecofinds');
 
 // User Schema
 const userSchema = new mongoose.Schema({
@@ -231,6 +228,117 @@ const paymentSchema = new mongoose.Schema({
 
 const Payment = mongoose.model('Payment', paymentSchema);
 
+// Cart Schema
+const cartSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  items: [{
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1
+    },
+    addedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  selectedItems: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product'
+  }],
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+// Update the updatedAt field before saving
+cartSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const Cart = mongoose.model('Cart', cartSchema);
+
+// Order Schema
+const orderSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  items: [{
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product',
+      required: true
+    },
+    name: String,
+    price: Number,
+    quantity: Number,
+    seller: String,
+    sellerId: mongoose.Schema.Types.ObjectId
+  }],
+  totalAmount: {
+    type: Number,
+    required: true
+  },
+  tax: {
+    type: Number,
+    default: 0
+  },
+  finalAmount: {
+    type: Number,
+    required: true
+  },
+  paymentId: {
+    type: String,
+    required: true
+  },
+  transactionId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  status: {
+    type: String,
+    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
+    default: 'pending'
+  },
+  shippingAddress: {
+    address: String,
+    city: String,
+    zipCode: String,
+    country: { type: String, default: 'USA' }
+  },
+  customerEmail: String,
+  customerName: String,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+orderSchema.pre('save', function(next) {
+  this.updatedAt = new Date();
+  next();
+});
+
+const Order = mongoose.model('Order', orderSchema);
+
 // Routes
 
 // Create Payment Intent
@@ -286,10 +394,11 @@ app.post('/api/create-payment-intent', async (req, res) => {
   }
 });
 
-// Confirm Payment
-app.post('/api/confirm-payment', async (req, res) => {
+// Confirm Payment and Create Order
+app.post('/api/confirm-payment', authMiddleware, async (req, res) => {
   try {
-    const { paymentIntentId, transactionId } = req.body;
+    const { paymentIntentId, transactionId, orderItems, shippingAddress } = req.body;
+    const userId = req.user.id;
 
     if (!paymentIntentId || !transactionId) {
       return res.status(400).json({ 
@@ -324,6 +433,56 @@ app.post('/api/confirm-payment', async (req, res) => {
     payment.updatedAt = new Date();
     await payment.save();
 
+    // Create order if payment succeeded and orderItems provided
+    let order = null;
+    if (paymentIntent.status === 'succeeded' && orderItems && orderItems.length > 0) {
+      const totalAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const tax = totalAmount * 0.08; // 8% tax
+      const finalAmount = totalAmount + tax;
+
+      order = new Order({
+        userId,
+        items: orderItems.map(item => ({
+          productId: item._id || item.productId,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          seller: item.seller,
+          sellerId: item.sellerId
+        })),
+        totalAmount,
+        tax,
+        finalAmount,
+        paymentId: paymentIntentId,
+        transactionId,
+        status: 'confirmed',
+        shippingAddress: shippingAddress || {},
+        customerEmail: payment.email,
+        customerName: payment.customerName
+      });
+
+      await order.save();
+
+      // Clear the user's cart after successful order
+      try {
+        const userCart = await Cart.findOne({ userId });
+        if (userCart) {
+          // Remove ordered items from cart
+          const orderedProductIds = orderItems.map(item => item._id || item.productId);
+          userCart.items = userCart.items.filter(
+            cartItem => !orderedProductIds.includes(cartItem.productId.toString())
+          );
+          userCart.selectedItems = userCart.selectedItems.filter(
+            selectedId => !orderedProductIds.includes(selectedId.toString())
+          );
+          await userCart.save();
+        }
+      } catch (cartError) {
+        console.error('Error clearing cart after order:', cartError);
+        // Don't fail the order creation if cart clearing fails
+      }
+    }
+
     res.json({
       success: true,
       payment: {
@@ -332,6 +491,13 @@ app.post('/api/confirm-payment', async (req, res) => {
         amount: payment.amount,
         email: payment.email
       },
+      order: order ? {
+        orderId: order._id,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        finalAmount: order.finalAmount,
+        items: order.items
+      } : null,
       stripeStatus: paymentIntent.status
     });
 
@@ -604,6 +770,374 @@ app.use('/api/products', productRouter);
 // Category routes
 const categoryRoutes = require('./routes/categories');
 app.use('/api/categories', categoryRoutes);
+
+// Cart Routes
+// Get user's cart
+app.get('/api/cart', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    let cart = await Cart.findOne({ userId }).populate('items.productId');
+    
+    if (!cart) {
+      cart = new Cart({ userId, items: [], selectedItems: [] });
+      await cart.save();
+    }
+
+    // Filter out items where productId is null (deleted products)
+    const validItems = cart.items.filter(item => item.productId);
+    
+    // If we found invalid items, update the cart to remove them
+    if (validItems.length !== cart.items.length) {
+      cart.items = validItems;
+      // Also clean up selectedItems that reference deleted products
+      const validProductIds = validItems.map(item => item.productId._id.toString());
+      cart.selectedItems = cart.selectedItems.filter(id => validProductIds.includes(id.toString()));
+      await cart.save();
+    }
+
+    res.json({
+      items: validItems.map(item => ({
+        _id: item.productId._id,
+        id: item.productId._id,
+        name: item.productId.name,
+        price: item.productId.price,
+        image: item.productId.imageUrl,
+        seller: item.productId.seller,
+        sellerId: item.productId.userId,
+        quantity: item.quantity,
+        addedDate: item.addedAt,
+        inStock: item.productId.inStock !== false,
+        condition: item.productId.condition || 'Good',
+        productId: item.productId._id
+      })),
+      selectedItems: cart.selectedItems
+    });
+  } catch (error) {
+    console.error('Error fetching cart:', error);
+    res.status(500).json({ message: 'Failed to fetch cart' });
+  }
+});
+
+// Add item to cart
+app.post('/api/cart/add', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { productId, quantity = 1 } = req.body;
+
+    if (!productId) {
+      return res.status(400).json({ message: 'Product ID is required' });
+    }
+
+    // Check if product exists
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    let cart = await Cart.findOne({ userId });
+    
+    if (!cart) {
+      cart = new Cart({ userId, items: [], selectedItems: [] });
+    }
+
+    // Check if item already exists in cart
+    const existingItemIndex = cart.items.findIndex(
+      item => item.productId.toString() === productId
+    );
+
+    if (existingItemIndex >= 0) {
+      // Update quantity if item exists
+      cart.items[existingItemIndex].quantity += quantity;
+    } else {
+      // Add new item to cart
+      cart.items.push({
+        productId,
+        quantity,
+        addedAt: new Date()
+      });
+    }
+
+    await cart.save();
+
+    res.json({
+      message: 'Item added to cart successfully',
+      item: {
+        productId,
+        quantity: existingItemIndex >= 0 
+          ? cart.items[existingItemIndex].quantity 
+          : quantity
+      }
+    });
+  } catch (error) {
+    console.error('Error adding to cart:', error);
+    res.status(500).json({ message: 'Failed to add item to cart' });
+  }
+});
+
+// Update item quantity in cart
+app.put('/api/cart/update', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { productId, quantity } = req.body;
+
+    if (!productId || quantity < 0) {
+      return res.status(400).json({ message: 'Invalid product ID or quantity' });
+    }
+
+    let cart = await Cart.findOne({ userId });
+    
+    if (!cart) {
+      return res.status(404).json({ message: 'Cart not found' });
+    }
+
+    if (quantity === 0) {
+      // Remove item if quantity is 0
+      cart.items = cart.items.filter(item => item.productId.toString() !== productId);
+      // Also remove from selected items
+      cart.selectedItems = cart.selectedItems.filter(id => id.toString() !== productId);
+    } else {
+      // Update quantity
+      const itemIndex = cart.items.findIndex(
+        item => item.productId.toString() === productId
+      );
+
+      if (itemIndex >= 0) {
+        cart.items[itemIndex].quantity = quantity;
+      } else {
+        return res.status(404).json({ message: 'Item not found in cart' });
+      }
+    }
+
+    await cart.save();
+
+    res.json({
+      message: 'Cart updated successfully',
+      quantity
+    });
+  } catch (error) {
+    console.error('Error updating cart:', error);
+    res.status(500).json({ message: 'Failed to update cart' });
+  }
+});
+
+// Remove item from cart
+app.delete('/api/cart/remove', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { productId } = req.body;
+
+    if (!productId) {
+      return res.status(400).json({ message: 'Product ID is required' });
+    }
+
+    let cart = await Cart.findOne({ userId });
+    
+    if (!cart) {
+      return res.status(404).json({ message: 'Cart not found' });
+    }
+
+    // Remove item from cart
+    cart.items = cart.items.filter(item => item.productId.toString() !== productId);
+    
+    // Also remove from selected items
+    cart.selectedItems = cart.selectedItems.filter(id => id.toString() !== productId);
+
+    await cart.save();
+
+    res.json({
+      message: 'Item removed from cart successfully'
+    });
+  } catch (error) {
+    console.error('Error removing from cart:', error);
+    res.status(500).json({ message: 'Failed to remove item from cart' });
+  }
+});
+
+// Clear entire cart
+app.delete('/api/cart/clear', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    let cart = await Cart.findOne({ userId });
+    
+    if (!cart) {
+      return res.status(404).json({ message: 'Cart not found' });
+    }
+
+    cart.items = [];
+    cart.selectedItems = [];
+    await cart.save();
+
+    res.json({
+      message: 'Cart cleared successfully'
+    });
+  } catch (error) {
+    console.error('Error clearing cart:', error);
+    res.status(500).json({ message: 'Failed to clear cart' });
+  }
+});
+
+// Update selected items in cart
+app.put('/api/cart/select', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { selectedItems } = req.body;
+
+    let cart = await Cart.findOne({ userId });
+    
+    if (!cart) {
+      return res.status(404).json({ message: 'Cart not found' });
+    }
+
+    cart.selectedItems = selectedItems || [];
+    await cart.save();
+
+    res.json({
+      message: 'Selected items updated successfully',
+      selectedItems: cart.selectedItems
+    });
+  } catch (error) {
+    console.error('Error updating selected items:', error);
+    res.status(500).json({ message: 'Failed to update selected items' });
+  }
+});
+
+// Order Routes
+// Get user's orders
+app.get('/api/orders', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10, status } = req.query;
+    
+    const query = { userId };
+    if (status) {
+      query.status = status;
+    }
+
+    const orders = await Order.find(query)
+      .populate('items.productId')
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Order.countDocuments(query);
+
+    res.json({
+      orders,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total
+    });
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
+});
+
+// Get specific order
+app.get('/api/orders/:orderId', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({ _id: orderId, userId })
+      .populate('items.productId');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error('Error fetching order:', error);
+    res.status(500).json({ message: 'Failed to fetch order' });
+  }
+});
+
+// Update order status (for admin or seller)
+app.put('/api/orders/:orderId/status', authMiddleware, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+    const userId = req.user.id;
+
+    const validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    // For now, allow users to cancel their own orders
+    // In a real app, you'd have more complex permissions
+    const order = await Order.findOne({ _id: orderId, userId });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Only allow cancellation if order is not shipped/delivered
+    if (status === 'cancelled' && ['shipped', 'delivered'].includes(order.status)) {
+      return res.status(400).json({ message: 'Cannot cancel shipped or delivered orders' });
+    }
+
+    order.status = status;
+    await order.save();
+
+    res.json({
+      message: 'Order status updated successfully',
+      order: {
+        orderId: order._id,
+        status: order.status,
+        updatedAt: order.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({ message: 'Failed to update order status' });
+  }
+});
+
+// Get order statistics for user
+app.get('/api/orders/stats/summary', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const stats = await Order.aggregate([
+      { $match: { userId: mongoose.Types.ObjectId(userId) } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$finalAmount' }
+        }
+      }
+    ]);
+
+    const summary = {
+      total: 0,
+      pending: 0,
+      confirmed: 0,
+      processing: 0,
+      shipped: 0,
+      delivered: 0,
+      cancelled: 0,
+      totalSpent: 0
+    };
+
+    stats.forEach(stat => {
+      summary[stat._id] = stat.count;
+      summary.total += stat.count;
+      if (stat._id !== 'cancelled') {
+        summary.totalSpent += stat.totalAmount;
+      }
+    });
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error fetching order stats:', error);
+    res.status(500).json({ message: 'Failed to fetch order statistics' });
+  }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

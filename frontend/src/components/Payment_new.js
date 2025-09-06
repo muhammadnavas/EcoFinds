@@ -1,7 +1,7 @@
 import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { AlertCircle, ArrowLeft, CheckCircle, CreditCard, Loader, Lock, ShoppingBag, User } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 // Initialize Stripe
@@ -83,9 +83,9 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
     if (cartTotal > 0) {
       createPaymentIntent();
     }
-  }, [cartTotal, createPaymentIntent]);
+  }, [cartTotal]);
 
-  const createPaymentIntent = useCallback(async () => {
+  const createPaymentIntent = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/create-payment-intent', {
@@ -118,7 +118,7 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
     } finally {
       setLoading(false);
     }
-  }, [cartTotal, user?.email, user?.name, formData.email, formData.cardName]);
+  };
 
   const validateForm = () => {
     const newErrors = {};

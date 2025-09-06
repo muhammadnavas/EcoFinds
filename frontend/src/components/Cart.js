@@ -1,109 +1,78 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
+import Payment from './Payment';
 
 const Cart = ({ onBack }) => {
-  const { user, authenticatedFetch } = useAuth();
-  const [cartItems, setCartItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const { 
+    items: cartItems, 
+    selectedItems, 
+    loading, 
+    error,
+    updateQuantity: updateCartQuantity, 
+    removeFromCart,
+    toggleSelectItem: toggleCartItemSelection,
+    selectAllItems,
+    deselectAllItems,
+    getSelectedTotal,
+    getSelectedCount,
+    getSelectedItems,
+    clearError
+  } = useCart();
+  
   const [updating, setUpdating] = useState({});
-  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [showPayment, setShowPayment] = useState(false);
 
+  // Clear errors when component mounts
   useEffect(() => {
-    fetchCartItems();
+    if (error) {
+      clearError();
+    }
   }, []);
 
-  const fetchCartItems = async () => {
-    try {
-      setLoading(true);
-      
-      // Simulate API call - in a real app, this would fetch actual cart data
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const mockCartItems = [
-        {
-          id: '1',
-          productId: 'prod1',
-          name: 'Vintage Leather Jacket',
-          price: 65.00,
-          originalPrice: 85.00,
-          image: 'https://via.placeholder.com/150x150',
-          seller: 'VintageStore',
-          sellerId: 'seller1',
-          quantity: 1,
-          addedDate: '2025-09-03',
-          inStock: true,
-          condition: 'Excellent',
-          size: 'Medium'
-        },
-        {
-          id: '2',
-          productId: 'prod2',
-          name: 'Smart Watch Series 5',
-          price: 150.00,
-          image: 'https://via.placeholder.com/150x150',
-          seller: 'TechDeals',
-          sellerId: 'seller2',
-          quantity: 1,
-          addedDate: '2025-09-02',
-          inStock: true,
-          condition: 'Like New',
-          warranty: '6 months'
-        },
-        {
-          id: '3',
-          productId: 'prod3',
-          name: 'Eco-Friendly Water Bottle',
-          price: 25.00,
-          image: 'https://via.placeholder.com/150x150',
-          seller: 'GreenGoods',
-          sellerId: 'seller3',
-          quantity: 2,
-          addedDate: '2025-09-01',
-          inStock: false,
-          condition: 'New',
-          material: 'Stainless Steel'
-        },
-        {
-          id: '4',
-          productId: 'prod4',
-          name: 'Wireless Bluetooth Headphones',
-          price: 45.00,
-          originalPrice: 60.00,
-          image: 'https://via.placeholder.com/150x150',
-          seller: 'AudioWorld',
-          sellerId: 'seller4',
-          quantity: 1,
-          addedDate: '2025-08-30',
-          inStock: true,
-          condition: 'Good',
-          batteryLife: '20 hours'
-        }
-      ];
-      
-      setCartItems(mockCartItems);
-      // Select all in-stock items by default
-      setSelectedItems(new Set(mockCartItems.filter(item => item.inStock).map(item => item.id)));
-    } catch (error) {
-      console.error('Error fetching cart items:', error);
-    } finally {
-      setLoading(false);
+  // Handle proceeding to checkout
+  const handleProceedToCheckout = () => {
+    const selectedCartItems = getSelectedItems();
+    if (selectedCartItems.length === 0) {
+      alert('Please select items to checkout');
+      return;
     }
+    setShowPayment(true);
   };
 
+  // Handle successful payment
+  const handlePaymentSuccess = (paymentData) => {
+    // You might want to clear the cart or redirect
+    setShowPayment(false);
+    alert('Payment successful! Order placed.');
+    // Optionally clear selected items or entire cart
+  };
+
+  // Handle payment cancellation
+  const handlePaymentCancel = () => {
+    setShowPayment(false);
+  };
+
+  if (showPayment) {
+    return (
+      <Payment
+        onBack={handlePaymentCancel}
+        cartItems={getSelectedItems()}
+        cartTotal={getSelectedTotal()}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+    );
+  }
+
+  // Wrapper functions to handle loading states
   const updateQuantity = async (itemId, newQuantity) => {
     if (newQuantity < 1) return;
     
     setUpdating(prev => ({ ...prev, [itemId]: true }));
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setCartItems(prev => 
-        prev.map(item => 
-          item.id === itemId ? { ...item, quantity: newQuantity } : item
-        )
-      );
+      await updateCartQuantity(itemId, newQuantity);
     } catch (error) {
       console.error('Error updating quantity:', error);
     } finally {
@@ -115,15 +84,7 @@ const Cart = ({ onBack }) => {
     setUpdating(prev => ({ ...prev, [itemId]: true }));
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      setCartItems(prev => prev.filter(item => item.id !== itemId));
-      setSelectedItems(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(itemId);
-        return newSet;
-      });
+      await removeFromCart(itemId);
     } catch (error) {
       console.error('Error removing item:', error);
     } finally {
@@ -132,36 +93,15 @@ const Cart = ({ onBack }) => {
   };
 
   const toggleSelectItem = (itemId) => {
-    setSelectedItems(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(itemId)) {
-        newSet.delete(itemId);
-      } else {
-        newSet.add(itemId);
-      }
-      return newSet;
-    });
+    toggleCartItemSelection(itemId);
   };
 
   const selectAll = () => {
-    const inStockItems = cartItems.filter(item => item.inStock);
-    setSelectedItems(new Set(inStockItems.map(item => item.id)));
+    selectAllItems();
   };
 
   const deselectAll = () => {
-    setSelectedItems(new Set());
-  };
-
-  const getSelectedTotal = () => {
-    return cartItems
-      .filter(item => selectedItems.has(item.id) && item.inStock)
-      .reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
-
-  const getSelectedCount = () => {
-    return cartItems
-      .filter(item => selectedItems.has(item.id) && item.inStock)
-      .reduce((total, item) => total + item.quantity, 0);
+    deselectAllItems();
   };
 
   if (loading) {
@@ -367,6 +307,7 @@ const Cart = ({ onBack }) => {
                 </div>
 
                 <button
+                  onClick={handleProceedToCheckout}
                   disabled={selectedItems.size === 0}
                   className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >

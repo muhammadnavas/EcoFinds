@@ -14,7 +14,7 @@ const CategoryGrid = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Default categories with eco-friendly themes
+  // Default categories with eco-friendly themes (matching product categories)
   const defaultCategories = [
     { 
       name: 'Electronics', 
@@ -22,63 +22,47 @@ const CategoryGrid = ({
       color: '#3B82F6',
       slug: 'electronics',
       productCount: 0,
-      description: 'Phones, laptops, and gadgets'
+      description: 'Eco-friendly electronics and gadgets'
     },
     { 
-      name: 'Clothing', 
-      icon: '👔', 
+      name: 'Fashion & Clothing', 
+      icon: '�', 
       color: '#EC4899',
-      slug: 'clothing',
+      slug: 'fashion-clothing',
       productCount: 0,
-      description: 'Fashion and apparel'
+      description: 'Sustainable fashion and apparel'
+    },
+    { 
+      name: 'Kitchen & Dining', 
+      icon: '�️', 
+      color: '#F59E0B',
+      slug: 'kitchen-dining',
+      productCount: 0,
+      description: 'Reusable kitchenware and dining'
     },
     { 
       name: 'Home & Garden', 
-      icon: '🏠', 
+      icon: '🏡', 
       color: '#10B981',
       slug: 'home-garden',
       productCount: 0,
-      description: 'Furniture and home decor'
+      description: 'Sustainable home and garden items'
     },
     { 
-      name: 'Sports', 
-      icon: '⚽', 
-      color: '#F59E0B',
-      slug: 'sports',
-      productCount: 0,
-      description: 'Sports equipment and gear'
-    },
-    { 
-      name: 'Books', 
-      icon: '📚', 
+      name: 'Health & Beauty', 
+      icon: '�', 
       color: '#8B5CF6',
-      slug: 'books',
+      slug: 'health-beauty',
       productCount: 0,
-      description: 'Books and educational materials'
+      description: 'Natural personal care products'
     },
     { 
-      name: 'Toys', 
-      icon: '🧸', 
-      color: '#F472B6',
-      slug: 'toys',
-      productCount: 0,
-      description: 'Toys and games for all ages'
-    },
-    { 
-      name: 'Automotive', 
-      icon: '🚗', 
-      color: '#6B7280',
-      slug: 'automotive',
-      productCount: 0,
-      description: 'Car parts and accessories'
-    },
-    { 
-      name: 'Beauty', 
-      icon: '💄', 
+      name: 'Sports & Outdoors', 
+      icon: '⚽', 
       color: '#EF4444',
-      slug: 'beauty',
+      slug: 'sports-outdoors',
       productCount: 0,
-      description: 'Cosmetics and personal care'
+      description: 'Eco-friendly sports equipment'
     }
   ];
 
@@ -114,7 +98,16 @@ const CategoryGrid = ({
   };
 
   const handleCategoryClick = (category) => {
-    const categoryValue = category?.slug || category?.name?.toLowerCase() || 'all';
+    // Handle both slug and name-based category selection
+    let categoryValue;
+    
+    if (category?.slug === 'all') {
+      categoryValue = 'all';
+    } else {
+      // Use the actual category name for filtering products
+      categoryValue = category?.name || category?.slug || 'all';
+    }
+    
     if (onCategoryChange) {
       onCategoryChange(categoryValue);
     }
@@ -195,16 +188,23 @@ const CategoryGrid = ({
         )}
 
         {/* Category Cards */}
-        {categories.map((category) => (
-          <CategoryCard
-            key={category._id || category.slug}
-            category={category}
-            isSelected={selectedCategory === (category.slug || category.name?.toLowerCase())}
-            onClick={handleCategoryClick}
-            showProductCount={showProductCounts}
-            size={cardSize}
-          />
-        ))}
+        {categories.map((category) => {
+          const isSelected = selectedCategory === 'all' ? false : 
+            selectedCategory === category.name || 
+            selectedCategory === category.slug ||
+            selectedCategory === category.name?.toLowerCase();
+            
+          return (
+            <CategoryCard
+              key={category._id || category.slug || category.name}
+              category={category}
+              isSelected={isSelected}
+              onClick={handleCategoryClick}
+              showProductCount={showProductCounts}
+              size={cardSize}
+            />
+          );
+        })}
       </div>
 
       {/* Empty State */}

@@ -1,5 +1,5 @@
 //src/components/Login.js
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const Login = ({ onBack }) => {
