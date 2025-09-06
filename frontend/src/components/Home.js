@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react';
 import AddToCartButton from './AddToCartButton';
 import CartButton from './CartButton';
 
-const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, refreshTrigger }) => {
+const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState(null);
 
   const categories = [
     { id: 'all', name: 'All Categories', icon: '🏷️' },
@@ -83,13 +82,8 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
     return matchesSearch && matchesCategory;
   });
 
-  const handleLogin = () => {
-    setUser({ name: "John Doe", email: "john@example.com" });
-    setIsMenuOpen(false);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
+  const handleLogoutClick = () => {
+    onLogout();
     setIsMenuOpen(false);
   };
 
@@ -208,15 +202,15 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
               <CartButton onShowCart={onShowCart} />
 
               {/* User Menu */}
-              {user ? (
+              {isAuthenticated && user ? (
                 <div className="hidden md:flex items-center space-x-2">
                   <div className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-2">
                     <UserIcon size={20} />
-                    <span className="text-sm font-medium">{user.name}</span>
+                    <span className="text-sm font-medium">{user.username || user.name}</span>
                   </div>
                   <button 
-                    onClick={handleLogout}
-                    className="text-sm text-gray-600 hover:text-green-600"
+                    onClick={handleLogoutClick}
+                    className="text-sm text-gray-600 hover:text-green-600 transition-colors"
                   >
                     Logout
                   </button>
@@ -224,12 +218,15 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
               ) : (
                 <div className="hidden md:flex items-center space-x-4">
                   <button 
-                    onClick={handleLogin}
-                    className="text-green-600 hover:text-green-700 font-medium"
+                    onClick={onShowLogin}
+                    className="text-green-600 hover:text-green-700 font-medium transition-colors"
                   >
                     Login
                   </button>
-                  <button className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                  <button 
+                    onClick={onShowLogin}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                  >
                     Register
                   </button>
                 </div>
@@ -271,15 +268,15 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
               </button>
               <button className="block text-gray-700 hover:text-green-600 font-medium">Help</button>
               <div className="pt-4 border-t">
-                {user ? (
+                {isAuthenticated && user ? (
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <UserIcon size={20} />
-                      <span className="font-medium">{user.name}</span>
+                      <span className="font-medium">{user.username || user.name}</span>
                     </div>
                     <button 
-                      onClick={handleLogout}
-                      className="text-sm text-gray-600 hover:text-green-600"
+                      onClick={handleLogoutClick}
+                      className="text-sm text-gray-600 hover:text-green-600 transition-colors"
                     >
                       Logout
                     </button>
@@ -287,12 +284,21 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
                 ) : (
                   <div className="space-y-2">
                     <button 
-                      onClick={handleLogin}
+                      onClick={() => {
+                        onShowLogin();
+                        setIsMenuOpen(false);
+                      }}
                       className="block w-full text-left text-green-600 hover:text-green-700 font-medium"
                     >
                       Login
                     </button>
-                    <button className="block w-full text-left bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors">
+                    <button 
+                      onClick={() => {
+                        onShowLogin();
+                        setIsMenuOpen(false);
+                      }}
+                      className="block w-full text-left bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                    >
                       Register
                     </button>
                   </div>
@@ -309,11 +315,13 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, r
         <div className="bg-gradient-to-br from-green-600 via-blue-600 to-green-800 rounded-2xl text-white p-8 mb-8 relative overflow-hidden">
           <div className="max-w-3xl relative z-10">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Discover Eco-Friendly Products 🌟
+              {isAuthenticated ? `Welcome back, ${user?.username || user?.name}! 👋` : 'Discover Eco-Friendly Products 🌟'}
             </h2>
             <p className="text-lg opacity-90 mb-6">
-              Buy and sell sustainable products for a better tomorrow. 
-              Every purchase makes a difference!
+              {isAuthenticated 
+                ? 'Ready to find your next sustainable purchase or list something new?'
+                : 'Buy and sell sustainable products for a better tomorrow. Every purchase makes a difference!'
+              }
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <button 

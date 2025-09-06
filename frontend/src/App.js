@@ -1,6 +1,9 @@
-import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { useState } from 'react';
 import './App.css';
-import Layout from './components/Layout';
+import AddProduct from './components/AddProduct';
+import CartPage from './components/CartPage';
+import Categories from './components/Categories';
+import Home from './components/Home';
 import { CartProvider } from './context/CartContext';
 import AddProductPage from './pages/AddProductPage';
 import CartPageWrapper from './pages/CartPageWrapper';
@@ -10,24 +13,55 @@ import NotFoundPage from './pages/NotFoundPage';
 import ProductPage from './pages/ProductPage';
 
 function App() {
-  const refreshProducts = 0;
+  const [currentView, setCurrentView] = useState('home');
+  const [refreshProducts, setRefreshProducts] = useState(0);
+
+  const handleShowAddProduct = () => {
+    setCurrentView('addProduct');
+  };
+
+  const handleShowCart = () => {
+    setCurrentView('cart');
+  };
+
+  const handleShowCategories = () => {
+    setCurrentView('categories');
+  };
+
+  const handleBackToHome = () => {
+    setCurrentView('home');
+  };
+
+  const handleProductAdded = () => {
+    // Trigger a refresh of the products list
+    setRefreshProducts(prev => prev + 1);
+    setCurrentView('home');
+  };
 
   return (
     <CartProvider>
-      <Router>
-        <div className="App">
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<HomePage refreshTrigger={refreshProducts} />} />
-              <Route path="product/:id" element={<ProductPage />} />
-              <Route path="cart" element={<CartPageWrapper />} />
-              <Route path="categories" element={<CategoriesPage />} />
-              <Route path="add-product" element={<AddProductPage />} />
-              <Route path="*" element={<NotFoundPage />} />
-            </Route>
-          </Routes>
-        </div>
-      </Router>
+      <div className="App min-h-screen bg-gray-50">
+        {currentView === 'home' && (
+          <Home 
+            onShowAddProduct={handleShowAddProduct} 
+            onShowCart={handleShowCart}
+            onShowCategories={handleShowCategories}
+            refreshTrigger={refreshProducts} 
+          />
+        )}
+        {currentView === 'addProduct' && (
+          <AddProduct 
+            onBack={handleBackToHome} 
+            onProductAdded={handleProductAdded}
+          />
+        )}
+        {currentView === 'cart' && (
+          <CartPage onBack={handleBackToHome} />
+        )}
+        {currentView === 'categories' && (
+          <Categories onBack={handleBackToHome} />
+        )}
+      </div>
     </CartProvider>
   );
 }
