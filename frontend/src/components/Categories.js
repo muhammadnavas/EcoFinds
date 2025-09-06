@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import AddToCartButton from './AddToCartButton';
 
-const Categories = ({ onBack }) => {
+const Categories = ({ onBack, onShowProduct }) => {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [products, setProducts] = useState([]);
@@ -218,7 +218,19 @@ const Categories = ({ onBack }) => {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-8">
                   {products.map((product) => (
-                    <div key={product._id} className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group">
+                    <div 
+                      key={product._id} 
+                      className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer"
+                      onClick={(e) => {
+                        // Don't navigate if clicking on the add to cart button
+                        if (e.target.closest('.add-to-cart-button')) {
+                          return;
+                        }
+                        if (onShowProduct) {
+                          onShowProduct(product._id);
+                        }
+                      }}
+                    >
                       <div className="aspect-w-1 aspect-h-1 w-full">
                         <img
                           src={product.imageUrl || `https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=300&h=300&fit=crop&crop=center`}
@@ -230,7 +242,7 @@ const Categories = ({ onBack }) => {
                         />
                       </div>
                       <div className="p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 hover:text-green-600 transition-colors">
                           {product.title}
                         </h3>
                         <p className="text-gray-600 text-sm mb-3 line-clamp-2">
@@ -244,7 +256,9 @@ const Categories = ({ onBack }) => {
                             by {product.sellerName}
                           </span>
                         </div>
-                        <AddToCartButton product={product} size="full" />
+                        <div className="add-to-cart-button">
+                          <AddToCartButton product={product} size="full" />
+                        </div>
                       </div>
                     </div>
                   ))}

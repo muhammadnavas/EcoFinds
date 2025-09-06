@@ -5,7 +5,18 @@ const Product = require('../models/Product');
 // Get all products
 router.get('/', async (req, res) => {
 	try {
-		const products = await Product.find().populate('seller', 'username').sort({ createdAt: -1 });
+		const page = parseInt(req.query.page) || 1;
+		const limit = parseInt(req.query.limit) || 0; // 0 means no limit
+		const skip = (page - 1) * limit;
+		
+		let query = Product.find().populate('seller', 'username');
+		
+		if (limit > 0) {
+			query = query.skip(skip).limit(limit);
+		}
+		
+		const products = await query.sort({ createdAt: -1 });
+		const totalProducts = await Product.countDocuments();
 		
 		// Map products to ensure seller info is properly formatted
 		const formattedProducts = products.map(product => {
@@ -18,10 +29,65 @@ router.get('/', async (req, res) => {
 			};
 		});
 		
-		res.json({ products: formattedProducts });
+		res.json({ 
+			success: true,
+			data: formattedProducts,
+			pagination: {
+				currentPage: page,
+				totalPages: limit > 0 ? Math.ceil(totalProducts / limit) : 1,
+				totalProducts: totalProducts,
+				hasNext: limit > 0 ? page < Math.ceil(totalProducts / limit) : false,
+				hasPrev: page > 1
+			}
+		});
 	} catch (error) {
 		console.error('Error fetching products:', error);
-		res.status(500).json({ message: 'Server error' });
+		res.status(500).json({ 
+			success: false,
+			message: 'Server error',
+			error: error.message 
+		});
+	}
+});
+
+// Get single product by ID
+router.get('/:id', async (req, res) => {
+	try {
+		const product = await Product.findById(req.params.id).populate('seller', 'username');
+		
+		if (!product) {
+			return res.status(404).json({
+				success: false,
+				message: 'Product not found'
+			});
+		}
+		
+		// Format product to ensure seller info is properly formatted
+		const productObj = product.toObject();
+		const formattedProduct = {
+			...productObj,
+			seller: {
+				username: productObj.sellerName || productObj.seller?.username || 'Anonymous'
+			}
+		};
+		
+		res.json({
+			success: true,
+			data: formattedProduct
+		});
+	} catch (error) {
+		console.error('Error fetching product:', error);
+		if (error.name === 'CastError') {
+			return res.status(400).json({
+				success: false,
+				message: 'Invalid product ID'
+			});
+		}
+		res.status(500).json({
+			success: false,
+			message: 'Server error',
+			error: error.message
+		});
 	}
 });
 
@@ -63,12 +129,17 @@ router.post('/', async (req, res) => {
 		};
 		
 		res.status(201).json({ 
+			success: true,
 			message: 'Product created successfully',
-			product: responseProduct 
+			data: responseProduct 
 		});
 	} catch (error) {
 		console.error('Error creating product:', error);
-		res.status(500).json({ message: 'Server error' });
+		res.status(500).json({ 
+			success: false,
+			message: 'Server error',
+			error: error.message 
+		});
 	}
 });
 

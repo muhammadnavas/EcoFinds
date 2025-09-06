@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import AddToCartButton from './AddToCartButton';
 import CartButton from './CartButton';
 
-const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }) => {
+const Home = ({ onShowAddProduct, onShowCart, onShowCategories, onShowProduct, refreshTrigger }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,7 +58,13 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
       
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products || []);
+        // Handle new API response format
+        if (data.success) {
+          setProducts(data.data || []);
+        } else {
+          // Fallback for old format
+          setProducts(data.products || []);
+        }
       } else {
         console.error('Failed to fetch products:', response.status, response.statusText);
         setProducts([]);
@@ -87,12 +93,25 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
     setIsMenuOpen(false);
   };
 
-  const ProductCard = ({ product }) => {
+  const ProductCard = ({ product, onShowProduct }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
+    const handleProductClick = (e) => {
+      // Don't navigate if clicking on the add to cart button
+      if (e.target.closest('.add-to-cart-button')) {
+        return;
+      }
+      if (onShowProduct) {
+        onShowProduct(product._id);
+      }
+    };
+
     return (
-      <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
+      <div 
+        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden cursor-pointer"
+        onClick={handleProductClick}
+      >
         <div className="relative w-full h-48 bg-gray-200">
           {!imageLoaded && !imageError && (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -102,7 +121,7 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
           <img
             src={product.imageUrl || 'https://via.placeholder.com/400x300/e5e7eb/6b7280?text=No+Image'}
             alt={product.title}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
+            className={`w-full h-full object-cover transition-opacity duration-300 hover:scale-105 transition-transform ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}
             onLoad={() => setImageLoaded(true)}
@@ -114,7 +133,7 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
           />
         </div>
         <div className="p-4">
-          <h3 className="font-semibold text-lg text-gray-800 mb-2 line-clamp-1">
+          <h3 className="font-semibold text-lg text-gray-800 mb-2 line-clamp-1 hover:text-green-600 transition-colors">
             {product.title}
           </h3>
           <p className="text-gray-600 text-sm mb-2 line-clamp-2">
@@ -139,7 +158,9 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
               <StarIcon />
               <span className="text-sm text-gray-600">4.5</span>
             </div>
-            <AddToCartButton product={product} size="small" />
+            <div className="add-to-cart-button">
+              <AddToCartButton product={product} size="small" />
+            </div>
           </div>
         </div>
       </div>
@@ -369,7 +390,7 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
         ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product) => (
-              <ProductCard key={product._id} product={product} />
+              <ProductCard key={product._id} product={product} onShowProduct={onShowProduct} />
             ))}
           </div>
         ) : (

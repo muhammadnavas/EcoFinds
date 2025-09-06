@@ -86,7 +86,7 @@ const AddProduct = ({ onBack, onProductAdded }) => {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (response.ok && (data.success || data.product)) {
         setSuccess('Product added successfully!');
         setFormData({
           title: '',
@@ -97,7 +97,7 @@ const AddProduct = ({ onBack, onProductAdded }) => {
           sellerName: '',
         });
         if (onProductAdded) {
-          onProductAdded(data.product);
+          onProductAdded(data.data || data.product);
         }
         // Auto redirect after 2 seconds
         setTimeout(() => {
