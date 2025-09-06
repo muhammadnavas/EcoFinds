@@ -39,8 +39,8 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
         const response = await fetch(`http://localhost:5000/api/products/${productId}`);
         const data = await response.json();
         
-        if (response.ok) {
-          setProduct(data);
+        if (response.ok && data.success) {
+          setProduct(data.data);
         } else {
           setError(data.message || 'Product not found');
         }
@@ -56,8 +56,8 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
         const response = await fetch('http://localhost:5000/api/products?limit=4');
         const data = await response.json();
         
-        if (response.ok) {
-          setRelatedProducts(data.products || []);
+        if (response.ok && data.success) {
+          setRelatedProducts(data.data || []);
         }
       } catch (err) {
         console.error('Failed to fetch related products:', err);
@@ -69,6 +69,24 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
       fetchRelatedProducts();
     }
   }, [productId]);
+
+  // Keyboard navigation for images
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (!product) return;
+      
+      if (e.key === 'ArrowLeft') {
+        prevImage();
+      } else if (e.key === 'ArrowRight') {
+        nextImage();
+      } else if (e.key === 'Escape') {
+        setIsImageZoomed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [product]);
 
   if (loading) {
     return (
@@ -125,13 +143,13 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
 
   const nextImage = () => {
     setSelectedImageIndex((prev) => 
-      prev === (product.images?.length || 1) - 1 ? 0 : prev + 1
+      prev === productImages.length - 1 ? 0 : prev + 1
     );
   };
 
   const prevImage = () => {
     setSelectedImageIndex((prev) => 
-      prev === 0 ? (product.images?.length || 1) - 1 : prev - 1
+      prev === 0 ? productImages.length - 1 : prev - 1
     );
   };
 
@@ -140,6 +158,29 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
       onShowProduct(relatedProductId);
     }
   };
+
+  // Generate multiple images for demo purposes
+  const getProductImages = () => {
+    if (!product) return [];
+    
+    // If product has an images array, use it
+    if (product.images && product.images.length > 0) {
+      return product.images;
+    }
+    
+    // Otherwise, generate demo images from the main image
+    const baseImage = product.imageUrl || '/api/placeholder/600/600';
+    const images = [baseImage];
+    
+    // Add some demo variations (you can replace these with actual image URLs)
+    for (let i = 1; i <= 3; i++) {
+      images.push(`${baseImage}?variant=${i}`);
+    }
+    
+    return images;
+  };
+
+  const productImages = getProductImages();
 
   const renderStars = (rating) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -156,6 +197,60 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Fullscreen Image Modal */}
+      {isImageZoomed && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center"
+          onClick={() => setIsImageZoomed(false)}
+        >
+          <div className="relative max-w-4xl max-h-4xl w-full h-full flex items-center justify-center p-4">
+            <img
+              src={productImages[selectedImageIndex]}
+              alt={product.title}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+            
+            {/* Close button */}
+            <button
+              onClick={() => setIsImageZoomed(false)}
+              className="absolute top-4 right-4 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-70 transition"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            
+            {/* Navigation arrows */}
+            {productImages.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); prevImage(); }}
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); nextImage(); }}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </>
+            )}
+            
+            {/* Image counter */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white bg-black bg-opacity-50 px-3 py-1 rounded">
+              {selectedImageIndex + 1} / {productImages.length}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -182,8 +277,8 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
             {/* Main Image */}
             <div className="relative group">
               <img
-                src={product.images?.[selectedImageIndex] || product.image || '/api/placeholder/600/600'}
-                alt={product.name}
+                src={productImages[selectedImageIndex] || '/api/placeholder/600/600'}
+                alt={product.title}
                 className={`w-full rounded-lg shadow-lg cursor-pointer transition duration-300 ${
                   isImageZoomed ? 'scale-110' : 'hover:scale-105'
                 }`}
@@ -191,8 +286,15 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
                 style={{ aspectRatio: '1/1', objectFit: 'cover' }}
               />
               
+              {/* Image counter */}
+              {productImages.length > 1 && (
+                <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
+                  {selectedImageIndex + 1} / {productImages.length}
+                </div>
+              )}
+              
               {/* Image Navigation Arrows */}
-              {product.images && product.images.length > 1 && (
+              {productImages.length > 1 && (
                 <>
                   <button
                     onClick={prevImage}
@@ -215,14 +317,14 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
             </div>
 
             {/* Image Thumbnails */}
-            {product.images && product.images.length > 1 && (
-              <div className="flex space-x-2 overflow-x-auto">
-                {product.images.map((image, index) => (
+            {productImages.length > 1 && (
+              <div className="flex space-x-2 overflow-x-auto pb-2">
+                {productImages.map((image, index) => (
                   <img
                     key={index}
                     src={image}
-                    alt={`${product.name} ${index + 1}`}
-                    className={`w-20 h-20 object-cover rounded-lg cursor-pointer transition duration-200 ${
+                    alt={`${product.title} ${index + 1}`}
+                    className={`flex-shrink-0 w-20 h-20 object-cover rounded-lg cursor-pointer transition duration-200 ${
                       selectedImageIndex === index 
                         ? 'ring-2 ring-green-500 scale-105' 
                         : 'hover:scale-105 hover:ring-2 hover:ring-gray-300'
@@ -237,7 +339,7 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
           {/* Product Information */}
           <div className="space-y-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">{product.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">{product.title}</h1>
               <div className="flex items-center space-x-4 mb-4">
                 <span className="text-3xl font-bold text-green-600">
                   ${parseFloat(product.price).toFixed(2)}
@@ -253,8 +355,8 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
                 <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full">
                   {product.category}
                 </span>
-                <span>Condition: {product.condition}</span>
-                <span>Location: {product.location}</span>
+                <span>Condition: {product.condition || 'Good'}</span>
+                <span>Seller: {product.sellerName || product.seller?.username || 'Anonymous'}</span>
               </div>
             </div>
 
@@ -266,7 +368,8 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
             {/* Contact Information */}
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Seller Information</h3>
-              <p className="text-gray-700">Contact: {product.contactInfo}</p>
+              <p className="text-gray-700">Seller: {product.sellerName || product.seller?.username || 'Anonymous'}</p>
+              <p className="text-gray-700 text-sm mt-1">Contact seller for more details</p>
             </div>
 
             {/* Add to Cart Button */}
@@ -323,16 +426,16 @@ const ProductDetail = ({ productId, onBack, onShowProduct }) => {
                   onClick={() => handleRelatedProductClick(relatedProduct._id)}
                 >
                   <img
-                    src={relatedProduct.image || '/api/placeholder/300/300'}
-                    alt={relatedProduct.name}
+                    src={relatedProduct.imageUrl || '/api/placeholder/300/300'}
+                    alt={relatedProduct.title}
                     className="w-full h-48 object-cover"
                   />
                   <div className="p-4">
                     <h3 className="font-semibold text-gray-900 mb-2 truncate">
-                      {relatedProduct.name}
+                      {relatedProduct.title}
                     </h3>
                     <p className="text-green-600 font-bold">${parseFloat(relatedProduct.price).toFixed(2)}</p>
-                    <p className="text-sm text-gray-600">{relatedProduct.condition}</p>
+                    <p className="text-sm text-gray-600">{relatedProduct.sellerName || 'Anonymous'}</p>
                   </div>
                 </div>
               ))}

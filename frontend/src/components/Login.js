@@ -1,66 +1,111 @@
 //src/components/Login.js
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
-const Login = ({ onLogin }) => {
+const Login = ({ onBack }) => {
+  const { login, register, loading, error, clearError } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
+    confirmPassword: ''
   });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
 
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
-    setError('');
+    setFormError('');
+    clearError();
+  };
+
+  const validateForm = () => {
+    if (isSignUp) {
+      if (!formData.username.trim()) {
+        setFormError('Username is required');
+        return false;
+      }
+      if (formData.username.length < 3) {
+        setFormError('Username must be at least 3 characters');
+        return false;
+      }
+      if (formData.password !== formData.confirmPassword) {
+        setFormError('Passwords do not match');
+        return false;
+      }
+    }
+    
+    if (!formData.email.trim()) {
+      setFormError('Email is required');
+      return false;
+    }
+    
+    if (!formData.password.trim()) {
+      setFormError('Password is required');
+      return false;
+    }
+    
+    if (formData.password.length < 6) {
+      setFormError('Password must be at least 6 characters');
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
+    
+    if (!validateForm()) return;
 
     try {
-      const endpoint = isSignUp ? '/api/auth/register' : '/api/auth/login';
-      const payload = isSignUp 
-        ? { username: formData.username, email: formData.email, password: formData.password }
-        : { email: formData.email, password: formData.password };
-
-      const response = await fetch(`http://localhost:5000${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        onLogin(data.user, data.token);
+      let result;
+      
+      if (isSignUp) {
+        result = await register(formData.username, formData.email, formData.password);
       } else {
-        setError(data.message || 'An error occurred');
+        result = await login(formData.email, formData.password);
+      }
+
+      if (result.success) {
+        // Auto redirect to home after successful auth
+        setTimeout(() => {
+          if (onBack) onBack();
+        }, 1000);
       }
     } catch (error) {
-      setError('Network error. Please try again.');
-      console.error('Error:', error);
+      console.error('Auth error:', error);
     }
-    setLoading(false);
   };
 
   const toggleSignUp = () => {
     setIsSignUp(!isSignUp);
-    setFormData({ username: '', email: '', password: '' });
-    setError('');
+    setFormData({ username: '', email: '', password: '', confirmPassword: '' });
+    setFormError('');
+    clearError();
   };
+
+  const displayError = formError || error;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
+        {/* Back Button */}
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="mb-4 flex items-center text-white hover:text-green-100 transition-colors duration-200"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Home
+          </button>
+        )}
+
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="bg-white rounded-full w-20 h-20 mx-auto flex items-center justify-center mb-4 shadow-lg">
@@ -76,9 +121,9 @@ const Login = ({ onLogin }) => {
             {isSignUp ? 'Create Account' : 'Welcome Back'}
           </h2>
 
-          {error && (
+          {displayError && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-              {error}
+              {displayError}
             </div>
           )}
 
@@ -132,6 +177,24 @@ const Login = ({ onLogin }) => {
                 placeholder="Enter your password"
               />
             </div>
+
+            {isSignUp && (
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirm Password
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required={isSignUp}
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition duration-200"
+                  placeholder="Confirm your password"
+                />
+              </div>
+            )}
 
             <button
               type="submit"

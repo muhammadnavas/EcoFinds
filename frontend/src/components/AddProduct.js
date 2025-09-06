@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 
 const AddProduct = ({ onBack, onProductAdded }) => {
+  const { isAuthenticated, user, authenticatedFetch } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     category: '',
     price: '',
     imageUrl: '',
+    images: [''],
     sellerName: '',
   });
   const [loading, setLoading] = useState(false);
@@ -16,6 +19,16 @@ const AddProduct = ({ onBack, onProductAdded }) => {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   // Fetch categories from API
+  useEffect(() => {
+    // Pre-fill seller name if user is authenticated
+    if (isAuthenticated && user && user.username && !formData.sellerName) {
+      setFormData(prev => ({
+        ...prev,
+        sellerName: user.username
+      }));
+    }
+  }, [isAuthenticated, user, formData.sellerName]);
+
   useEffect(() => {
     fetchCategories();
   }, []);
@@ -59,15 +72,40 @@ const AddProduct = ({ onBack, onProductAdded }) => {
   };
 
   const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
-    setError('');
-    setSuccess('');
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleImageChange = (index, value) => {
+    const newImages = [...formData.images];
+    newImages[index] = value;
+    setFormData(prev => ({
+      ...prev,
+      images: newImages,
+      imageUrl: newImages[0] || '' // Keep first image as main imageUrl for backward compatibility
+    }));
+  };
+
+  const addImageField = () => {
+    setFormData(prev => ({
+      ...prev,
+      images: [...prev.images, '']
+    }));
+  };
+
+  const removeImageField = (index) => {
+    if (formData.images.length > 1) {
+      const newImages = formData.images.filter((_, i) => i !== index);
+      setFormData(prev => ({
+        ...prev,
+        images: newImages,
+        imageUrl: newImages[0] || ''
+      }));
+    }
+  };  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -76,13 +114,29 @@ const AddProduct = ({ onBack, onProductAdded }) => {
     try {
       const apiUrl = (process.env.REACT_APP_API_URL || 'http://localhost:5000/api') + '/products';
       
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      // Prepare form data with user information
+      const submitData = {
+        ...formData,
+        sellerName: user?.username || formData.sellerName || 'Anonymous'
+      };
+
+      let response;
+      if (isAuthenticated && authenticatedFetch) {
+        // Use authenticated fetch if user is logged in
+        response = await authenticatedFetch(apiUrl, {
+          method: 'POST',
+          body: JSON.stringify(submitData),
+        });
+      } else {
+        // Fallback to regular fetch for non-authenticated users
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(submitData),
+        });
+      }
 
       const data = await response.json();
 
@@ -94,6 +148,7 @@ const AddProduct = ({ onBack, onProductAdded }) => {
           category: '',
           price: '',
           imageUrl: '',
+          images: [''],
           sellerName: '',
         });
         if (onProductAdded) {
@@ -132,6 +187,43 @@ const AddProduct = ({ onBack, onProductAdded }) => {
             Share your items with the EcoFinds community and help promote sustainable living!
           </p>
         </div>
+
+        {/* Authentication Info */}
+        {!isAuthenticated && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h4 className="text-sm font-medium text-yellow-800">Not Signed In</h4>
+                <p className="text-sm text-yellow-700 mt-1">
+                  You can still add products, but consider signing in to manage your listings and build seller reputation.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAuthenticated && user && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h4 className="text-sm font-medium text-green-800">Signed in as {user.username}</h4>
+                <p className="text-sm text-green-700 mt-1">
+                  Your product will be associated with your account for easy management.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <div className="bg-white rounded-2xl shadow-lg p-8">
@@ -235,29 +327,70 @@ const AddProduct = ({ onBack, onProductAdded }) => {
               </div>
             </div>
 
-            {/* Image URL */}
+            {/* Multiple Images */}
             <div>
-              <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 mb-2">
-                Image URL (optional)
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Product Images (optional)
               </label>
-              <input
-                id="imageUrl"
-                name="imageUrl"
-                type="url"
-                value={formData.imageUrl}
-                onChange={handleInputChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition duration-200"
-                placeholder="https://example.com/image.jpg"
-              />
-              <p className="text-sm text-gray-500 mt-1">
-                Provide a direct link to an image of your product. If left empty, a placeholder will be used.
+              <div className="space-y-3">
+                {formData.images.map((image, index) => (
+                  <div key={index} className="flex items-center space-x-3">
+                    <div className="flex-1">
+                      <input
+                        type="url"
+                        value={image}
+                        onChange={(e) => handleImageChange(index, e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition duration-200"
+                        placeholder={`Image URL ${index + 1}`}
+                      />
+                    </div>
+                    {image && (
+                      <div className="w-16 h-16 rounded-lg overflow-hidden border border-gray-200">
+                        <img
+                          src={image}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    {formData.images.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeImageField(index)}
+                        className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors duration-200"
+                        title="Remove image"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addImageField}
+                  className="flex items-center text-green-600 hover:text-green-700 transition-colors duration-200"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Add Another Image
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Add multiple image URLs to showcase your product from different angles. The first image will be used as the main product image.
               </p>
             </div>
 
             {/* Seller Name */}
+            {/* Seller Name */}
             <div>
               <label htmlFor="sellerName" className="block text-sm font-medium text-gray-700 mb-2">
-                Your Name (optional)
+                {isAuthenticated ? 'Seller Name' : 'Your Name (optional)'}
               </label>
               <input
                 id="sellerName"
@@ -265,13 +398,19 @@ const AddProduct = ({ onBack, onProductAdded }) => {
                 type="text"
                 value={formData.sellerName}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition duration-200"
-                placeholder="Enter your name or username"
-                maxLength="50"
+                disabled={isAuthenticated && user}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition duration-200 ${
+                  isAuthenticated && user ? 'bg-gray-50 cursor-not-allowed' : ''
+                }`}
+                placeholder={isAuthenticated ? user?.username : "Enter your name or username"}
               />
-            </div>
-
-            {/* Submit Button */}
+              <p className="text-sm text-gray-500 mt-1">
+                {isAuthenticated && user 
+                  ? 'Your username will be used as the seller name'
+                  : 'This will be displayed as the seller name for this product'
+                }
+              </p>
+            </div>            {/* Submit Button */}
             <div className="pt-6">
               <button
                 type="submit"

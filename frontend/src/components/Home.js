@@ -1,8 +1,18 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import AddToCartButton from './AddToCartButton';
 import CartButton from './CartButton';
 
-const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }) => {
+const Home = ({ 
+  onShowAddProduct, 
+  onShowCart, 
+  onShowCategories, 
+  onShowLogin,
+  onShowProfile,
+  onShowProduct,
+  refreshTrigger
+}) => {
+  const { isAuthenticated, user, logout } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,7 +93,7 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
   });
 
   const handleLogoutClick = () => {
-    onLogout();
+    logout();
     setIsMenuOpen(false);
   };
 
@@ -204,10 +214,13 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
               {/* User Menu */}
               {isAuthenticated && user ? (
                 <div className="hidden md:flex items-center space-x-2">
-                  <div className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-2">
+                  <button
+                    onClick={onShowProfile}
+                    className="flex items-center space-x-2 bg-gray-100 rounded-full px-3 py-2 hover:bg-gray-200 transition-colors"
+                  >
                     <UserIcon size={20} />
                     <span className="text-sm font-medium">{user.username || user.name}</span>
-                  </div>
+                  </button>
                   <button 
                     onClick={handleLogoutClick}
                     className="text-sm text-gray-600 hover:text-green-600 transition-colors"
@@ -270,10 +283,16 @@ const Home = ({ onShowAddProduct, onShowCart, onShowCategories, refreshTrigger }
               <div className="pt-4 border-t">
                 {isAuthenticated && user ? (
                   <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() => {
+                        onShowProfile();
+                        setIsMenuOpen(false);
+                      }}
+                      className="flex items-center space-x-2 w-full text-left hover:text-green-600 transition-colors"
+                    >
                       <UserIcon size={20} />
                       <span className="font-medium">{user.username || user.name}</span>
-                    </div>
+                    </button>
                     <button 
                       onClick={handleLogoutClick}
                       className="text-sm text-gray-600 hover:text-green-600 transition-colors"

@@ -72,6 +72,24 @@ const authMiddleware = async (req, res, next) => {
   }
 };
 
+// Optional auth middleware - doesn't fail if no token provided
+const optionalAuthMiddleware = async (req, res, next) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (token) {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const user = await User.findById(decoded.id).select('-password');
+      if (user) {
+        req.user = user;
+      }
+    }
+    next();
+  } catch (error) {
+    // Continue without authentication if token is invalid
+    next();
+  }
+};
+
 // Routes
 
 // Register
@@ -181,7 +199,7 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
 
 // Product routes
 const productRoutes = require('./routes/products');
-app.use('/api/products', productRoutes);
+app.use('/api/products', optionalAuthMiddleware, productRoutes);
 
 // Category routes
 const categoryRoutes = require('./routes/categories');

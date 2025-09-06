@@ -32,6 +32,12 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: 'https://via.placeholder.com/300x200?text=Product+Image',
   },
+  images: {
+    type: [String],
+    default: function() {
+      return [this.imageUrl || 'https://via.placeholder.com/300x200?text=Product+Image'];
+    }
+  },
   createdAt: {
     type: Date,
     default: Date.now,

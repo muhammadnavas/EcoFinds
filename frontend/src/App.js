@@ -4,17 +4,17 @@ import AddProduct from './components/AddProduct';
 import CartPage from './components/CartPage';
 import Categories from './components/Categories';
 import Home from './components/Home';
+import Login from './components/Login';
+import MyListings from './components/MyListings';
+import ProductDetail from './components/ProductDetail';
+import UserProfile from './components/UserProfile';
+import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
-import AddProductPage from './pages/AddProductPage';
-import CartPageWrapper from './pages/CartPageWrapper';
-import CategoriesPage from './pages/CategoriesPage';
-import HomePage from './pages/HomePage';
-import NotFoundPage from './pages/NotFoundPage';
-import ProductPage from './pages/ProductPage';
 
 function App() {
   const [currentView, setCurrentView] = useState('home');
   const [refreshProducts, setRefreshProducts] = useState(0);
+  const [selectedProductId, setSelectedProductId] = useState(null);
 
   const handleShowAddProduct = () => {
     setCurrentView('addProduct');
@@ -28,8 +28,26 @@ function App() {
     setCurrentView('categories');
   };
 
+  const handleShowLogin = () => {
+    setCurrentView('login');
+  };
+
+  const handleShowProfile = () => {
+    setCurrentView('profile');
+  };
+
+  const handleShowMyListings = () => {
+    setCurrentView('myListings');
+  };
+
+  const handleShowProduct = (productId) => {
+    setSelectedProductId(productId);
+    setCurrentView('productDetail');
+  };
+
   const handleBackToHome = () => {
     setCurrentView('home');
+    setSelectedProductId(null);
   };
 
   const handleProductAdded = () => {
@@ -39,30 +57,61 @@ function App() {
   };
 
   return (
-    <CartProvider>
-      <div className="App min-h-screen bg-gray-50">
-        {currentView === 'home' && (
-          <Home 
-            onShowAddProduct={handleShowAddProduct} 
-            onShowCart={handleShowCart}
-            onShowCategories={handleShowCategories}
-            refreshTrigger={refreshProducts} 
-          />
-        )}
-        {currentView === 'addProduct' && (
-          <AddProduct 
-            onBack={handleBackToHome} 
-            onProductAdded={handleProductAdded}
-          />
-        )}
-        {currentView === 'cart' && (
-          <CartPage onBack={handleBackToHome} />
-        )}
-        {currentView === 'categories' && (
-          <Categories onBack={handleBackToHome} />
-        )}
-      </div>
-    </CartProvider>
+    <AuthProvider>
+      <CartProvider>
+        <div className="App min-h-screen bg-gray-50">
+          {currentView === 'home' && (
+            <Home 
+              onShowAddProduct={handleShowAddProduct} 
+              onShowCart={handleShowCart}
+              onShowCategories={handleShowCategories}
+              onShowLogin={handleShowLogin}
+              onShowProfile={handleShowProfile}
+              onShowMyListings={handleShowMyListings}
+              onShowProduct={handleShowProduct}
+              refreshTrigger={refreshProducts} 
+            />
+          )}
+          {currentView === 'login' && (
+            <Login onBack={handleBackToHome} />
+          )}
+          {currentView === 'profile' && (
+            <UserProfile 
+              onBack={handleBackToHome}
+              onShowMyListings={handleShowMyListings}
+            />
+          )}
+          {currentView === 'myListings' && (
+            <MyListings 
+              onBack={handleBackToHome}
+              onShowProduct={handleShowProduct}
+            />
+          )}
+          {currentView === 'addProduct' && (
+            <AddProduct 
+              onBack={handleBackToHome} 
+              onProductAdded={handleProductAdded}
+            />
+          )}
+          {currentView === 'cart' && (
+            <CartPage onBack={handleBackToHome} />
+          )}
+          {currentView === 'categories' && (
+            <Categories 
+              onBack={handleBackToHome}
+              onShowProduct={handleShowProduct}
+            />
+          )}
+          {currentView === 'productDetail' && (
+            <ProductDetail 
+              productId={selectedProductId}
+              onBack={handleBackToHome}
+              onShowProduct={handleShowProduct}
+            />
+          )}
+        </div>
+      </CartProvider>
+    </AuthProvider>
   );
 }
 
