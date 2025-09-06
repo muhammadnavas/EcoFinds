@@ -4,6 +4,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
@@ -196,6 +197,308 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
     },
   });
 });
+// Payment Schema
+const paymentSchema = new mongoose.Schema({
+  email: { type: String, required: true },
+  amount: { type: Number, required: true },
+  currency: { type: String, default: 'usd' },
+  status: { 
+    type: String, 
+    enum: ['pending', 'completed', 'failed', 'refunded'],
+    default: 'pending'
+  },
+  stripePaymentIntentId: String,
+  transactionId: { type: String, unique: true },
+  customerName: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const Payment = mongoose.model('Payment', paymentSchema);
+
+// Routes
+
+// Create Payment Intent
+app.post('/api/create-payment-intent', async (req, res) => {
+  try {
+    const { amount, currency = 'usd', email, customerName } = req.body;
+
+    // Validate required fields
+    if (!amount || !email) {
+      return res.status(400).json({ 
+        error: 'Amount and email are required' 
+      });
+    }
+
+    // Create payment intent with Stripe
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // Convert to cents
+      currency,
+      metadata: {
+        email,
+        customerName: customerName || ''
+      }
+    });
+
+    // Generate unique transaction ID
+    const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Save payment record to database
+    const payment = new Payment({
+      email,
+      amount,
+      currency,
+      stripePaymentIntentId: paymentIntent.id,
+      transactionId,
+      customerName,
+      status: 'pending'
+    });
+
+    await payment.save();
+
+    res.json({
+      clientSecret: paymentIntent.client_secret,
+      transactionId,
+      paymentIntentId: paymentIntent.id
+    });
+
+  } catch (error) {
+    console.error('Error creating payment intent:', error);
+    res.status(500).json({ 
+      error: 'Failed to create payment intent',
+      message: error.message 
+    });
+  }
+});
+
+// Confirm Payment
+app.post('/api/confirm-payment', async (req, res) => {
+  try {
+    const { paymentIntentId, transactionId } = req.body;
+
+    if (!paymentIntentId || !transactionId) {
+      return res.status(400).json({ 
+        error: 'Payment Intent ID and Transaction ID are required' 
+      });
+    }
+
+    // Retrieve payment intent from Stripe
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    // Find payment record in database
+    const payment = await Payment.findOne({ 
+      transactionId,
+      stripePaymentIntentId: paymentIntentId 
+    });
+
+    if (!payment) {
+      return res.status(404).json({ 
+        error: 'Payment record not found' 
+      });
+    }
+
+    // Update payment status based on Stripe status
+    let status = 'pending';
+    if (paymentIntent.status === 'succeeded') {
+      status = 'completed';
+    } else if (paymentIntent.status === 'payment_failed') {
+      status = 'failed';
+    }
+
+    payment.status = status;
+    payment.updatedAt = new Date();
+    await payment.save();
+
+    res.json({
+      success: true,
+      payment: {
+        transactionId: payment.transactionId,
+        status: payment.status,
+        amount: payment.amount,
+        email: payment.email
+      },
+      stripeStatus: paymentIntent.status
+    });
+
+  } catch (error) {
+    console.error('Error confirming payment:', error);
+    res.status(500).json({ 
+      error: 'Failed to confirm payment',
+      message: error.message 
+    });
+  }
+});
+
+// Get Payment Status
+app.get('/api/payment-status/:transactionId', async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+
+    const payment = await Payment.findOne({ transactionId });
+
+    if (!payment) {
+      return res.status(404).json({ 
+        error: 'Payment not found' 
+      });
+    }
+
+    res.json({
+      transactionId: payment.transactionId,
+      status: payment.status,
+      amount: payment.amount,
+      currency: payment.currency,
+      email: payment.email,
+      customerName: payment.customerName,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt
+    });
+
+  } catch (error) {
+    console.error('Error fetching payment status:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch payment status',
+      message: error.message 
+    });
+  }
+});
+
+// List User Payments
+app.get('/api/payments/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+
+    const payments = await Payment.find({ email })
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Payment.countDocuments({ email });
+
+    res.json({
+      payments,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      total
+    });
+
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch payments',
+      message: error.message 
+    });
+  }
+});
+
+// Webhook endpoint for Stripe events
+app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.log(`Webhook signature verification failed.`, err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle the event
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      const paymentIntent = event.data.object;
+      await updatePaymentStatus(paymentIntent.id, 'completed');
+      console.log('Payment succeeded:', paymentIntent.id);
+      break;
+    
+    case 'payment_intent.payment_failed':
+      const failedPayment = event.data.object;
+      await updatePaymentStatus(failedPayment.id, 'failed');
+      console.log('Payment failed:', failedPayment.id);
+      break;
+    
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({received: true});
+});
+
+// Helper function to update payment status
+async function updatePaymentStatus(stripePaymentIntentId, status) {
+  try {
+    await Payment.updateOne(
+      { stripePaymentIntentId },
+      { 
+        status, 
+        updatedAt: new Date() 
+      }
+    );
+  } catch (error) {
+    console.error('Error updating payment status:', error);
+  }
+}
+
+// Refund Payment
+app.post('/api/refund-payment', async (req, res) => {
+  try {
+    const { transactionId, amount, reason = 'requested_by_customer' } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ 
+        error: 'Transaction ID is required' 
+      });
+    }
+
+    // Find payment record
+    const payment = await Payment.findOne({ transactionId });
+
+    if (!payment) {
+      return res.status(404).json({ 
+        error: 'Payment not found' 
+      });
+    }
+
+    if (payment.status !== 'completed') {
+      return res.status(400).json({ 
+        error: 'Can only refund completed payments' 
+      });
+    }
+
+    // Create refund with Stripe
+    const refund = await stripe.refunds.create({
+      payment_intent: payment.stripePaymentIntentId,
+      amount: amount ? Math.round(amount * 100) : undefined, // Partial refund if amount specified
+      reason
+    });
+
+    // Update payment status
+    payment.status = 'refunded';
+    payment.updatedAt = new Date();
+    await payment.save();
+
+    res.json({
+      success: true,
+      refund: {
+        id: refund.id,
+        amount: refund.amount / 100,
+        status: refund.status
+      },
+      payment: {
+        transactionId: payment.transactionId,
+        status: payment.status
+      }
+    });
+
+  } catch (error) {
+    console.error('Error processing refund:', error);
+    res.status(500).json({ 
+      error: 'Failed to process refund',
+      message: error.message 
+    });
+  }
+});
+
 
 // Product routes
 const productRoutes = require('./routes/products');
@@ -215,3 +518,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
