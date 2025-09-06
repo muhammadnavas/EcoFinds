@@ -10,6 +10,8 @@ import MyListings from './components/MyListings';
 import ProductDetail from './components/ProductDetail';
 import UserPortal from './components/UserPortal';
 import UserProfile from './components/UserProfile';
+import Payment from './components/Payment'; // Add this import
+
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 
@@ -50,6 +52,11 @@ function App() {
     setCurrentView('myListings');
   };
 
+  // Add this handler for payment
+  const handleShowPayment = () => {
+    setCurrentView('payment');
+  };
+
   const handleShowProduct = (productId) => {
     setSelectedProductId(productId);
     setCurrentView('productDetail');
@@ -58,6 +65,11 @@ function App() {
   const handleBackToHome = () => {
     setCurrentView('home');
     setSelectedProductId(null);
+  };
+
+  // Add handler to go back to cart from payment
+  const handleBackToCart = () => {
+    setCurrentView('cart');
   };
 
   const handleProductAdded = () => {
@@ -121,7 +133,14 @@ function App() {
             />
           )}
           {currentView === 'cart' && (
-            <CartPage onBack={handleBackToHome} />
+            <CartPage 
+              onBack={handleBackToHome} 
+              onCheckout={handleShowPayment} // Add this prop to CartPage
+            />
+          )}
+          {/* Add the payment view */}
+          {currentView === 'payment' && (
+            <Payment onBack={handleBackToCart} />
           )}
           {currentView === 'categories' && (
             <Categories 

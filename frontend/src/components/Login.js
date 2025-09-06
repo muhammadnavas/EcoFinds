@@ -1,6 +1,8 @@
 //src/components/Login.js
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { auth, googleProvider } from '../firebase';
+import { signInWithPopup } from 'firebase/auth';
 
 const Login = ({ onBack }) => {
   const { login, register, loading, error, clearError } = useAuth();
@@ -13,6 +15,15 @@ const Login = ({ onBack }) => {
   });
   const [formError, setFormError] = useState('');
 
+  // ✅ helper function for username generation
+  const generateUsername = (email) => {
+    if (!email) return "user_" + Math.floor(100 + Math.random() * 900);
+    const prefix = email.split("@")[0].slice(0, 4); // first 4 chars before @
+    const randomNum = Math.floor(100 + Math.random() * 900); // random 3-digit number
+    return `${prefix}_${randomNum}`;
+  };
+
+  // Handle input change
   const handleInputChange = (e) => {
     setFormData({
       ...formData,
@@ -22,6 +33,7 @@ const Login = ({ onBack }) => {
     clearError();
   };
 
+  // Form validation
   const validateForm = () => {
     if (isSignUp) {
       if (!formData.username.trim()) {
@@ -37,17 +49,17 @@ const Login = ({ onBack }) => {
         return false;
       }
     }
-    
+
     if (!formData.email.trim()) {
       setFormError('Email is required');
       return false;
     }
-    
+
     if (!formData.password.trim()) {
       setFormError('Password is required');
       return false;
     }
-    
+
     if (formData.password.length < 6) {
       setFormError('Password must be at least 6 characters');
       return false;
@@ -56,14 +68,15 @@ const Login = ({ onBack }) => {
     return true;
   };
 
+  // Email/Password submit
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
     try {
       let result;
-      
+
       if (isSignUp) {
         result = await register(formData.username, formData.email, formData.password);
       } else {
@@ -71,7 +84,6 @@ const Login = ({ onBack }) => {
       }
 
       if (result.success) {
-        // Auto redirect to home after successful auth
         setTimeout(() => {
           if (onBack) onBack();
         }, 1000);
@@ -81,6 +93,7 @@ const Login = ({ onBack }) => {
     }
   };
 
+  // Toggle Sign-up / Sign-in
   const toggleSignUp = () => {
     setIsSignUp(!isSignUp);
     setFormData({ username: '', email: '', password: '', confirmPassword: '' });
@@ -89,6 +102,33 @@ const Login = ({ onBack }) => {
   };
 
   const displayError = formError || error;
+
+  // **Google Login Handler**
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      console.log("Google user:", user);
+
+      // ✅ Generate username from email (first 4 chars + random 3 digits)
+      const username = generateUsername(user.email);
+
+      // ✅ Store enriched user object
+      const userData = {
+        uid: user.uid,
+        email: user.email,
+        name: user.displayName || user.email,
+        username: username,
+      };
+
+      localStorage.setItem('ecofinds-user', JSON.stringify(userData));
+
+      if (onBack) onBack(); // redirect after successful login
+    } catch (error) {
+      console.error("Google login failed", error);
+      setFormError('Google login failed. Please try again.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center p-4">
@@ -225,6 +265,18 @@ const Login = ({ onBack }) => {
               )}
             </button>
           </form>
+
+          {/* Google Login Button */}
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              className="w-full flex items-center justify-center py-3 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-200"
+            >
+              <img src="/google-logo.png" alt="Google" className="w-5 h-5 mr-2" />
+              Continue with Google
+            </button>
+          </div>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
