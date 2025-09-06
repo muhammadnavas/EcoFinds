@@ -1,76 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import './App.css';
-import Login from './components/Login';
+import AddProduct from './components/AddProduct';
+import CartPage from './components/CartPage';
+import Categories from './components/Categories';
 import Home from './components/Home';
+import { CartProvider } from './context/CartContext';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [currentView, setCurrentView] = useState('home');
+  const [refreshProducts, setRefreshProducts] = useState(0);
 
-  useEffect(() => {
-    // Check if user is already logged in
-    const token = localStorage.getItem('token');
-    if (token) {
-      fetchUser(token);
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchUser = async (token) => {
-    try {
-      const response = await fetch('http://localhost:5000/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('token');
-      }
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      localStorage.removeItem('token');
-    }
-    setLoading(false);
+  const handleShowAddProduct = () => {
+    setCurrentView('addProduct');
   };
 
-  const handleLogin = (userData, token) => {
-    localStorage.setItem('token', token);
-    setUser(userData);
-    setIsAuthenticated(true);
+  const handleShowCart = () => {
+    setCurrentView('cart');
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setIsAuthenticated(false);
+  const handleShowCategories = () => {
+    setCurrentView('categories');
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleBackToHome = () => {
+    setCurrentView('home');
+  };
+
+  const handleProductAdded = () => {
+    // Trigger a refresh of the products list
+    setRefreshProducts(prev => prev + 1);
+    setCurrentView('home');
+  };
 
   return (
-    <div className="App min-h-screen bg-gray-50">
-      {isAuthenticated ? (
-        <Home user={user} onLogout={handleLogout} />
-      ) : (
-        <Login onLogin={handleLogin} />
-      )}
-    </div>
+    <CartProvider>
+      <div className="App min-h-screen bg-gray-50">
+        {currentView === 'home' && (
+          <Home 
+            onShowAddProduct={handleShowAddProduct} 
+            onShowCart={handleShowCart}
+            onShowCategories={handleShowCategories}
+            refreshTrigger={refreshProducts} 
+          />
+        )}
+        {currentView === 'addProduct' && (
+          <AddProduct 
+            onBack={handleBackToHome} 
+            onProductAdded={handleProductAdded}
+          />
+        )}
+        {currentView === 'cart' && (
+          <CartPage onBack={handleBackToHome} />
+        )}
+        {currentView === 'categories' && (
+          <Categories onBack={handleBackToHome} />
+        )}
+      </div>
+    </CartProvider>
   );
 }
 

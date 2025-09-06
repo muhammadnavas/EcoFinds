@@ -45,42 +45,8 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Product Schema (for future use)
-const productSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  description: {
-    type: String,
-    required: true,
-  },
-  category: {
-    type: String,
-    required: true,
-  },
-  price: {
-    type: Number,
-    required: true,
-    min: 0,
-  },
-  seller: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-  },
-  imageUrl: {
-    type: String,
-    default: 'https://via.placeholder.com/300x200?text=Product+Image',
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-});
-
-const Product = mongoose.model('Product', productSchema);
+// Product model
+const Product = require('./models/Product');
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -213,55 +179,13 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   });
 });
 
-// Get sample products for home page
-app.get('/api/products', async (req, res) => {
-  try {
-    // Sample data for demo (you can replace with actual database query)
-    const sampleProducts = [
-      {
-        _id: '1',
-        title: 'Vintage Leather Jacket',
-        description: 'Beautiful vintage leather jacket in excellent condition',
-        category: 'Fashion',
-        price: 85,
-        imageUrl: 'https://via.placeholder.com/300x200?text=Leather+Jacket',
-        seller: { username: 'fashionista123' }
-      },
-      {
-        _id: '2',
-        title: 'MacBook Pro 2019',
-        description: 'Gently used MacBook Pro with minor wear',
-        category: 'Electronics',
-        price: 1200,
-        imageUrl: 'https://via.placeholder.com/300x200?text=MacBook+Pro',
-        seller: { username: 'techguru' }
-      },
-      {
-        _id: '3',
-        title: 'Indoor Plant Collection',
-        description: 'Set of 5 healthy indoor plants with pots',
-        category: 'Home & Garden',
-        price: 45,
-        imageUrl: 'https://via.placeholder.com/300x200?text=Plants',
-        seller: { username: 'plantlover' }
-      },
-      {
-        _id: '4',
-        title: 'Acoustic Guitar',
-        description: 'Yamaha acoustic guitar, great for beginners',
-        category: 'Musical Instruments',
-        price: 180,
-        imageUrl: 'https://via.placeholder.com/300x200?text=Guitar',
-        seller: { username: 'musician42' }
-      },
-    ];
-    
-    res.json({ products: sampleProducts });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+// Product routes
+const productRoutes = require('./routes/products');
+app.use('/api/products', productRoutes);
+
+// Category routes
+const categoryRoutes = require('./routes/categories');
+app.use('/api/categories', categoryRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

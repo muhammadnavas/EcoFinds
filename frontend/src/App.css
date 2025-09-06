@@ -2,12 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Reset any potential background bleeding */
+html, body, #root {
+  background: #f9fafb !important;
+  background-image: none !important;
+}
+
 /* Custom styles */
 .line-clamp-1 {
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
 .line-clamp-2 {
@@ -15,6 +22,7 @@
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .aspect-w-16 {
