@@ -25,19 +25,6 @@ const wishlistReducer = (state, action) => {
         return state;
       }
       
-      // Check category restriction if there are existing products
-      if (currentProducts.length > 0 && state.productDetails[currentProducts[0]]) {
-        const existingCategory = state.productDetails[currentProducts[0]].category;
-        if (productData.category !== existingCategory) {
-          // Category mismatch - don't add
-          return {
-            ...state,
-            products: currentProducts,
-            categoryError: `Can only add products from the same category to wishlist. Current wishlist contains ${existingCategory} products.`
-          };
-        }
-      }
-      
       return {
         ...state,
         products: [...currentProducts, productId],
@@ -142,13 +129,10 @@ export const WishlistProvider = ({ children }) => {
     return firstProduct ? firstProduct.category : null;
   }, [state.products, state.productDetails]);
 
-  // Check if product can be added (category validation)
+  // Check if product can be added (no category restriction for wishlist)
   const canAddProduct = useCallback((productData) => {
-    if (!Array.isArray(state.products) || state.products.length === 0) return true;
-    
-    const currentCategory = getWishlistCategory();
-    return currentCategory === productData.category;
-  }, [state.products, getWishlistCategory]);
+    return true; // Wishlist allows products from any category
+  }, []);
 
   const value = {
     ...state,

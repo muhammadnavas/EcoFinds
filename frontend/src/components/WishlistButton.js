@@ -31,19 +31,13 @@ const WishlistButton = ({
       return;
     }
 
-    // Check if we have product data for category validation
+    // Check if we have product data
     if (!product) {
       showError('Product information not available');
       return;
     }
 
-    // Check category compatibility
-    if (!canAddProduct(product)) {
-      const currentCategory = getWishlistCategory();
-      showError(`Can only add products from the same category to wishlist. Current wishlist contains ${currentCategory} products.`);
-      return;
-    }
-
+    // Add to wishlist (no category restriction)
     addToWishlist(productId, product);
     showSuccess(`Added ${product.title} to wishlist`);
     
