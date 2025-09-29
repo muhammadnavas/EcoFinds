@@ -13,15 +13,23 @@ import SyncStatusIndicator from './components/SyncStatusIndicator';
 import ToastContainer from './components/ToastContainer';
 import UserPortal from './components/UserPortal';
 import UserProfile from './components/UserProfile';
+import Wishlist from './components/Wishlist';
 
+import ComparisonIndicator from './components/ComparisonIndicator';
+import ProductComparison from './components/ProductComparison';
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { ComparisonProvider, useComparison } from './context/ComparisonContext';
 import { FeedbackProvider } from './context/FeedbackContext';
+import { WishlistProvider } from './context/WishlistContext';
 
 function App() {
   const [currentView, setCurrentView] = useState('home');
   const [refreshProducts, setRefreshProducts] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState(null);
+
+  // Comparison modal state (local, but sync with context)
+  // We'll use context for open/close state
 
   const handleShowAddProduct = () => {
     setCurrentView('addProduct');
@@ -55,6 +63,10 @@ function App() {
     setCurrentView('myListings');
   };
 
+  const handleShowWishlist = () => {
+    setCurrentView('wishlist');
+  };
+
   // Add this handler for payment
   const handleShowPayment = () => {
     setCurrentView('payment');
@@ -85,7 +97,10 @@ function App() {
     <AuthProvider>
       <FeedbackProvider>
         <CartProvider>
-          <div className="App min-h-screen bg-gray-50">
+          <WishlistProvider>
+            <ComparisonProvider>
+              <ComparisonWrapper>
+              <div className="App min-h-screen bg-gray-50">
             {currentView === 'home' && (
               <Home 
                 onShowAddProduct={handleShowAddProduct} 
@@ -95,6 +110,7 @@ function App() {
                 onShowProfile={handleShowProfile}
                 onShowDashboard={handleShowUserPortal}
                 onShowHelp={handleShowHelp}
+                onShowWishlist={handleShowWishlist}
                 onShowProduct={handleShowProduct}
                 refreshTrigger={refreshProducts} 
               />
@@ -159,14 +175,50 @@ function App() {
                 onShowProduct={handleShowProduct}
               />
             )}
+            {currentView === 'wishlist' && (
+              <Wishlist 
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+              />
+            )}
             
             {/* Real-time feedback components */}
-            <ToastContainer />
-            <SyncStatusIndicator />
-          </div>
-        </CartProvider>
-      </FeedbackProvider>
-    </AuthProvider>
+                <ToastContainer />
+                <SyncStatusIndicator />
+              </div>
+            </ComparisonWrapper>
+          </ComparisonProvider>
+        </WishlistProvider>
+      </CartProvider>
+    </FeedbackProvider>
+  </AuthProvider>
+  );
+
+}
+
+// Wrapper to use comparison context and render indicator/modal
+function ComparisonWrapper({ children }) {
+  const {
+    isComparisonViewOpen,
+    products,
+    productDetails,
+    toggleComparisonView,
+    clearComparison
+  } = useComparison();
+
+  return (
+    <>
+      {children}
+      <ComparisonIndicator />
+      {isComparisonViewOpen && (
+        <ProductComparison
+          onClose={toggleComparisonView}
+          comparedProducts={products}
+          productDetails={productDetails}
+          onClearComparison={clearComparison}
+        />
+      )}
+    </>
   );
 }
 

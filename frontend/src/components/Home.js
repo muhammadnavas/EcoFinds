@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import AddToCartButton from './AddToCartButton';
+import AdvancedFilters from './AdvancedFilters';
 import CartButton from './CartButton';
+import CompareButton from './CompareButton';
 import EnhancedSearch from './EnhancedSearch';
 import HeaderLogo from './HeaderLogo';
 import HelpWidget from './HelpWidget';
+import QuickViewModal from './QuickViewModal';
+import TouchOptimizedCard from './TouchOptimizedCard';
+import WishlistIndicator from './WishlistIndicator';
 
 const Home = ({ 
   onShowAddProduct, 
@@ -14,6 +19,7 @@ const Home = ({
   onShowProfile,
   onShowDashboard,
   onShowHelp,
+  onShowWishlist,
   onShowProduct,
   refreshTrigger
 }) => {
@@ -23,6 +29,17 @@ const Home = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [filters, setFilters] = useState({
+    priceRange: [0, 10000],
+    condition: 'all',
+    location: '',
+    sortBy: 'newest',
+    availability: 'all',
+    rating: 0
+  });
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [quickViewProductId, setQuickViewProductId] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const categories = [
     { id: 'all', name: 'All Categories', icon: '🏷️' },
@@ -132,6 +149,108 @@ const Home = ({
     });
   };
 
+  // Filter change handler
+  const handleFiltersChange = (newFilters) => {
+    setFilters(newFilters);
+  };
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768 || 'ontouchstart' in window);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Apply filters to products
+  useEffect(() => {
+    let filtered = [...products];
+
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(product =>
+        product.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.category.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Apply category filter
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(product => product.category === selectedCategory);
+    }
+
+    // Apply price range filter
+    if (filters.priceRange[0] > 0 || filters.priceRange[1] < 10000) {
+      filtered = filtered.filter(product => 
+        product.price >= filters.priceRange[0] && product.price <= filters.priceRange[1]
+      );
+    }
+
+    // Apply condition filter
+    if (filters.condition !== 'all') {
+      filtered = filtered.filter(product => 
+        (product.condition || 'good').toLowerCase() === filters.condition.toLowerCase()
+      );
+    }
+
+    // Apply location filter
+    if (filters.location) {
+      filtered = filtered.filter(product => 
+        (product.location || '').toLowerCase().includes(filters.location.toLowerCase())
+      );
+    }
+
+    // Apply rating filter
+    if (filters.rating > 0) {
+      filtered = filtered.filter(product => (product.rating || 4.2) >= filters.rating);
+    }
+
+    // Apply availability filter
+    if (filters.availability !== 'all') {
+      if (filters.availability === 'available') {
+        filtered = filtered.filter(product => product.stock > 0);
+      } else if (filters.availability === 'out-of-stock') {
+        filtered = filtered.filter(product => product.stock === 0);
+      }
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case 'price-low-high':
+          return a.price - b.price;
+        case 'price-high-low':
+          return b.price - a.price;
+        case 'name-az':
+          return a.title.localeCompare(b.title);
+        case 'name-za':
+          return b.title.localeCompare(a.title);
+        case 'rating':
+          return (b.rating || 4.2) - (a.rating || 4.2);
+        case 'oldest':
+          return new Date(a.createdAt) - new Date(b.createdAt);
+        case 'newest':
+        default:
+          return new Date(b.createdAt) - new Date(a.createdAt);
+      }
+    });
+
+    setFilteredProducts(filtered);
+  }, [products, searchQuery, selectedCategory, filters]);
+
+  // Quick view handlers
+  const handleQuickView = (productId) => {
+    setQuickViewProductId(productId);
+  };
+
+  const closeQuickView = () => {
+    setQuickViewProductId(null);
+  };
+
   const handleLogoutClick = () => {
     logout();
     setIsMenuOpen(false);
@@ -148,9 +267,9 @@ const Home = ({
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const [isHovered, setIsHovered] = useState(false);
 
     const handleProductClick = (e) => {
-      // Don't navigate if clicking on the add to cart button or delete button
       if (e.target.closest('.add-to-cart-button') || e.target.closest('.delete-product-button')) {
         return;
       }
@@ -167,7 +286,6 @@ const Home = ({
         return;
       }
 
-      // Check if user is the owner of the product
       const isOwner = product.seller?._id === user._id || 
                      product.seller?.username === user.username ||
                      product.sellerName === user.username;
@@ -209,7 +327,6 @@ const Home = ({
       }
     };
 
-    // Check if current user owns this product
     const isOwner = isAuthenticated && user && (
       product.seller?._id === user._id || 
       product.seller?.username === user.username ||
@@ -218,16 +335,18 @@ const Home = ({
 
     return (
       <div 
-        className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden cursor-pointer relative"
+        className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer relative group border border-gray-100"
         onClick={handleProductClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Delete button for product owners */}
-        {isOwner && (
-          <div className="absolute top-2 right-2 z-10 delete-product-button">
+        {/* Enhanced Action Buttons */}
+        <div className="absolute top-3 right-3 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          {isOwner && (
             <button
               onClick={handleDeleteProduct}
               disabled={deleting}
-              className={`p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-colors ${
+              className={`p-2 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg transition-all duration-200 transform hover:scale-110 delete-product-button ${
                 deleting ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               title="Delete Product"
@@ -240,21 +359,59 @@ const Home = ({
                 </svg>
               )}
             </button>
-          </div>
-        )}
+          )}
+          
+          {/* Wishlist Button */}
+          <button
+            className="p-2 bg-white hover:bg-pink-50 text-gray-600 hover:text-pink-500 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110"
+            title="Add to Wishlist"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </button>
 
-        <div className="relative w-full h-48 bg-gray-200">
+          {/* Quick View Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleQuickView(product._id);
+            }}
+            className="p-2 bg-white hover:bg-blue-50 text-gray-600 hover:text-blue-500 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110"
+            title="Quick View"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Enhanced Status Badges */}
+        <div className="absolute top-3 left-3 z-10 flex flex-col space-y-2">
+          <span className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-semibold shadow-lg">
+            ✓ Verified
+          </span>
+          {product.condition && (
+            <span className="bg-blue-500 text-white px-2 py-1 rounded-full text-xs font-semibold shadow-lg">
+              {product.condition}
+            </span>
+          )}
+        </div>
+
+        {/* Enhanced Image Section */}
+        <div className="relative w-full h-56 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
           {!imageLoaded && !imageError && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-3 border-green-600"></div>
             </div>
           )}
           <img
             src={product.imageUrl || 'https://via.placeholder.com/400x300/e5e7eb/6b7280?text=No+Image'}
             alt={product.title}
-            className={`w-full h-full object-cover transition-opacity duration-300 hover:scale-105 transition-transform ${
+            className={`w-full h-full object-cover transition-all duration-500 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
-            }`}
+            } ${isHovered ? 'scale-110' : 'scale-100'}`}
             onLoad={() => setImageLoaded(true)}
             onError={(e) => {
               setImageError(true);
@@ -262,36 +419,74 @@ const Home = ({
               e.target.src = 'https://via.placeholder.com/400x300/e5e7eb/6b7280?text=Image+Not+Found';
             }}
           />
+          
+          {/* Overlay on Hover */}
+          <div className={`absolute inset-0 bg-black transition-opacity duration-300 ${
+            isHovered ? 'opacity-20' : 'opacity-0'
+          }`}></div>
         </div>
-        <div className="p-4">
-          <h3 className="font-semibold text-lg text-gray-800 mb-2 line-clamp-1 hover:text-green-600 transition-colors">
-            {product.title}
-          </h3>
-          <p className="text-gray-600 text-sm mb-2 line-clamp-2">
+
+        {/* Enhanced Content Section */}
+        <div className="p-5">
+          <div className="flex items-start justify-between mb-3">
+            <h3 className="font-bold text-lg text-gray-800 line-clamp-2 hover:text-green-600 transition-colors leading-tight flex-1">
+              {product.title}
+            </h3>
+            <div className="ml-2 flex items-center text-yellow-400">
+              <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
+                <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+              </svg>
+              <span className="text-sm text-gray-600 ml-1">4.8</span>
+            </div>
+          </div>
+
+          <p className="text-gray-600 text-sm mb-4 line-clamp-2 leading-relaxed">
             {product.description}
           </p>
-          <div className="flex items-center justify-between">
-            <span className="text-2xl font-bold text-green-600">
-              ₹{(parseFloat(product.price) * 83).toLocaleString('en-IN')}
+
+          {/* Enhanced Price Section */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-2xl font-bold text-green-600">
+                ₹{(parseFloat(product.price) * 83).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-sm text-gray-500 line-through">
+                ₹{(parseFloat(product.price) * 83 * 1.2).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+            <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-bold">
+              17% OFF
             </span>
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+          </div>
+
+          {/* Enhanced Category and Seller Info */}
+          <div className="flex items-center justify-between mb-4">
+            <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
               {product.category}
             </span>
-          </div>
-          <div className="mt-3 flex items-center text-xs text-gray-500">
-            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center mr-2">
-              <span className="text-white text-xs">👤</span>
+            <div className="flex items-center text-xs text-gray-500">
+              <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mr-2">
+                <span className="text-white text-xs font-bold">
+                  {(product.sellerName || product.seller?.username || 'U').charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <span className="font-medium">
+                {product.sellerName || product.seller?.username || 'Unknown'}
+              </span>
             </div>
-            <span>by {product.sellerName || product.seller?.username || 'Unknown'}</span>
           </div>
-          <div className="flex items-center justify-between mt-3">
-            <div className="flex items-center space-x-1">
-              <StarIcon />
-              <span className="text-sm text-gray-600">4.5</span>
-            </div>
-            <div className="add-to-cart-button">
+
+          {/* Enhanced Action Section */}
+          <div className="flex items-center space-x-2 pt-2 border-t border-gray-100">
+            <div className="flex-1 add-to-cart-button">
               <AddToCartButton product={product} size="small" />
             </div>
+            <CompareButton productId={product._id} size="small" />
+            <button className="px-3 py-2 border border-gray-300 rounded-lg text-gray-600 hover:border-green-500 hover:text-green-600 transition-colors text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+              </svg>
+            </button>
           </div>
         </div>
       </div>
@@ -334,6 +529,9 @@ const Home = ({
 
             {/* User Actions */}
             <div className="flex items-center space-x-6">
+              {/* Wishlist */}
+              <WishlistIndicator onShowWishlist={onShowWishlist} />
+              
               {/* Cart */}
               <CartButton onShowCart={onShowCart} />
 
@@ -524,17 +722,25 @@ const Home = ({
           />
         </div>
 
+        {/* Advanced Filters */}
+        <AdvancedFilters
+          onFiltersChange={handleFiltersChange}
+          categories={categories}
+          products={products}
+          className="mb-8"
+        />
+
         {/* Product Grid */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <h3 className="text-2xl font-bold text-gray-800">
               {searchQuery || selectedCategory !== 'all' 
-                ? `Showing ${products.length} result(s)`
+                ? `Showing ${filteredProducts.length} result(s)`
                 : 'Latest Products'
               }
             </h3>
             <div className="text-sm text-gray-500">
-              {products.length} products found
+              {filteredProducts.length} of {products.length} products
             </div>
           </div>
         </div>
@@ -544,14 +750,16 @@ const Home = ({
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
             <p className="text-gray-600">Loading amazing products...</p>
           </div>
-        ) : products.length > 0 ? (
+        ) : filteredProducts.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {products.map((product) => (
-              <ProductCard 
+            {filteredProducts.map((product) => (
+              <TouchOptimizedCard 
                 key={product._id} 
                 product={product} 
                 onShowProduct={onShowProduct} 
                 onProductDeleted={handleProductDeleted}
+                onQuickView={(productId) => setQuickViewProductId(productId)}
+                isMobile={isMobile}
               />
             ))}
           </div>
@@ -560,12 +768,20 @@ const Home = ({
             <div className="text-6xl mb-4">🔍</div>
             <h3 className="text-xl font-semibold text-gray-700 mb-2">No products found</h3>
             <p className="text-gray-500 mb-6">
-              Try adjusting your search or category filter
+              Try adjusting your search or filter settings
             </p>
             <button 
               onClick={() => {
                 setSearchQuery('');
                 setSelectedCategory('all');
+                setFilters({
+                  priceRange: [0, 10000],
+                  condition: 'all',
+                  location: '',
+                  sortBy: 'newest',
+                  availability: 'all',
+                  rating: 0
+                });
               }}
               className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200"
             >
@@ -582,16 +798,13 @@ const Home = ({
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center mb-4">
                 <div className="bg-white rounded-lg w-8 h-8 flex items-center justify-center mr-2 p-1">
-                  <svg width="24" height="24" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-                    {/* Green leaf */}
-                    <path d="M9.6 24 Q24 9.6 38.4 24 Q24 14.4 9.6 24" fill="#22c55e" />
-                    {/* Purple leaf overlay */}
-                    <path d="M19.2 24 Q33.6 9.6 38.4 24 Q31.2 14.4 19.2 24" fill="#8b5cf6" />
-                    {/* Base arch - green */}
-                    <path d="M4.8 28.8 Q14.4 19.2 24 28.8 Q33.6 19.2 43.2 28.8 Q33.6 33.6 24 28.8 Q14.4 33.6 4.8 28.8" fill="#16a34a" />
-                    {/* Base arch - purple */}
-                    <path d="M9.6 33.6 Q19.2 24 28.8 33.6 Q38.4 24 43.2 33.6 Q38.4 38.4 28.8 33.6 Q19.2 38.4 9.6 33.6" fill="#7c3aed" />
-                  </svg>
+                  <img 
+                    src="/logo.png" 
+                    alt="EcoFinds Logo" 
+                    width="24" 
+                    height="24" 
+                    style={{ objectFit: 'contain' }}
+                  />
                 </div>
                 <span className="text-xl font-bold">EcoFinds</span>
               </div>
@@ -647,6 +860,18 @@ const Home = ({
 
       {/* Floating Help Widget */}
       <HelpWidget onShowHelp={onShowHelp} />
+
+      {/* Quick View Modal */}
+      {quickViewProductId && (
+        <QuickViewModal
+          productId={quickViewProductId}
+          onClose={closeQuickView}
+          onShowFullProduct={(productId) => {
+            closeQuickView();
+            onShowProduct(productId);
+          }}
+        />
+      )}
     </div>
   );
 };

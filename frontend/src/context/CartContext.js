@@ -161,10 +161,10 @@ const initialState = {
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
   const { user, authenticatedFetch } = useAuth();
-  const { withFeedback, showSuccess, showError, showWarning, setItemState, clearItemState, getItemState } = useFeedback();
+  const { withFeedback, showSuccess, showWarning, showInfo, setItemState, clearItemState, getItemState } = useFeedback();
 
   // Retry utility function
-  const retryOperation = async (operation, maxRetries = 2) => {
+  const retryOperation = useCallback(async (operation, maxRetries = 2) => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await operation();
@@ -176,7 +176,7 @@ export const CartProvider = ({ children }) => {
         await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
     }
-  };
+  }, []);
 
   const loadCartFromLocalStorage = () => {
     const savedCart = localStorage.getItem('ecofinds-cart');

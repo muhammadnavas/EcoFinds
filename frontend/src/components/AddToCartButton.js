@@ -1,17 +1,27 @@
 import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 
-const AddToCartButton = ({ product, className = "", size = "medium" }) => {
+const AddToCartButton = ({ product, productId, className = "", size = "medium" }) => {
   const { addToCart, getItemQuantity, updateQuantity, getItemState } = useCart();
   const [isAdding, setIsAdding] = useState(false);
   
-  const quantity = getItemQuantity(product._id);
-  const itemState = getItemState ? getItemState(product._id) : { loading: false, success: false, error: false };
+  // Support both product object and productId
+  const id = productId || product?._id;
+  
+  if (!id) {
+    console.error('AddToCartButton: Missing product or productId prop');
+    return null;
+  }
+  
+  const quantity = getItemQuantity(id);
+  const itemState = getItemState ? getItemState(id) : { loading: false, success: false, error: false };
 
   const handleAddToCart = async () => {
     setIsAdding(true);
     try {
-      await addToCart(product);
+      // If we have the full product object, use it; otherwise create minimal object
+      const productToAdd = product || { _id: id };
+      await addToCart(productToAdd);
     } catch (error) {
       console.error('Failed to add to cart:', error);
     } finally {
@@ -24,7 +34,7 @@ const AddToCartButton = ({ product, className = "", size = "medium" }) => {
 
   const handleQuantityChange = async (newQuantity) => {
     try {
-      await updateQuantity(product._id, newQuantity);
+      await updateQuantity(id, newQuantity);
     } catch (error) {
       console.error('Failed to update quantity:', error);
     }
