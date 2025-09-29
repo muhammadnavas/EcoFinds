@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useReducer } from 'react';
 import { useAuth } from './AuthContext';
+import { useFeedback } from './FeedbackContext';
 
 const CartContext = createContext();
 
@@ -160,6 +161,7 @@ const initialState = {
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
   const { user, authenticatedFetch } = useAuth();
+  const { withFeedback, showSuccess, showError, showWarning, setItemState, clearItemState, getItemState } = useFeedback();
 
   // Retry utility function
   const retryOperation = async (operation, maxRetries = 2) => {
@@ -200,6 +202,8 @@ export const CartProvider = ({ children }) => {
     if (!guestCartItems || guestCartItems.length === 0) return;
     
     try {
+      showInfo(`Syncing ${guestCartItems.length} item(s) to your account... 🔄`, 2000);
+      
       // Add each guest cart item to the backend with retry logic
       for (const item of guestCartItems) {
         await retryOperation(async () => {
@@ -219,13 +223,15 @@ export const CartProvider = ({ children }) => {
       
       // Clear guest cart from localStorage after successful migration
       localStorage.removeItem('ecofinds-cart');
+      showSuccess(`Successfully synced ${guestCartItems.length} item(s) to your account! ✨`);
       console.log('Successfully migrated guest cart to user account');
     } catch (error) {
       console.error('Error migrating guest cart to backend:', error);
       // Keep guest cart in localStorage if migration fails
+      showWarning('Some items could not be synced to your account. They remain in your local cart. ⚠️');
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Some items could not be synced to your account' });
     }
-  }, [authenticatedFetch, retryOperation]);
+  }, [authenticatedFetch, retryOperation, showInfo, showSuccess, showWarning]);
 
   const loadCartFromBackend = useCallback(async (shouldMigrateGuestCart = true) => {
     try {
@@ -324,107 +330,149 @@ export const CartProvider = ({ children }) => {
 
   // Cart actions
   const addToCart = async (product, quantity = 1) => {
-    try {
-      dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
-      
-      // Always add to local state first for immediate UI feedback
-      dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
-
-      if (user && authenticatedFetch) {
-        // Save to backend for authenticated users
-        try {
-          const response = await authenticatedFetch('/api/cart/add', {
-            method: 'POST',
-            body: JSON.stringify({
-              productId: product._id,
-              quantity: quantity
-            })
-          });
-
-          if (!response || !response.ok) {
-            console.warn('Failed to sync cart with backend, item saved locally');
-          }
-        } catch (backendError) {
-          console.warn('Backend sync failed, item saved locally:', backendError);
-          // Don't throw error, item is already in local state
+    return await withFeedback(
+      async () => {
+        // Prevent duplicate additions while syncing
+        if (state.syncing) {
+          throw new Error('Please wait for current operation to complete');
         }
-      }
 
-      return { success: true };
-    } catch (error) {
-      console.error('Error adding to cart:', error);
-      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to add item to cart' });
-      return { success: false, error: error.message };
-    }
+        dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: true });
+        
+        // Always add to local state first for immediate UI feedback
+        dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
+
+        if (user && authenticatedFetch) {
+          // Save to backend for authenticated users
+          await retryOperation(async () => {
+            const response = await authenticatedFetch('/api/cart/add', {
+              method: 'POST',
+              body: JSON.stringify({
+                productId: product._id,
+                quantity: quantity
+              })
+            });
+
+            if (!response || !response.ok) {
+              throw new Error('Failed to sync with backend');
+            }
+          });
+        }
+
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: false });
+        return { success: true };
+      },
+      {
+        loadingKey: `add-to-cart-${product._id}`,
+        loadingMessage: `Adding ${product.name} to cart...`,
+        successMessage: `${product.name} added to cart! 🛒`,
+        errorMessage: `Failed to add ${product.name} to cart`,
+        itemId: product._id
+      }
+    );
   };
 
   const removeFromCart = async (productId) => {
-    try {
-      dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
-      
-      // Always remove from local state first for immediate UI feedback
-      dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
-
-      if (user && authenticatedFetch) {
-        // Remove from backend for authenticated users
-        try {
-          const response = await authenticatedFetch('/api/cart/remove', {
-            method: 'DELETE',
-            body: JSON.stringify({ productId })
-          });
-
-          if (!response || !response.ok) {
-            console.warn('Failed to sync cart removal with backend');
-          }
-        } catch (backendError) {
-          console.warn('Backend sync failed for removal:', backendError);
-          // Don't throw error, item is already removed from local state
+    const item = state.items.find(item => item._id === productId || item.id === productId);
+    const itemName = item?.name || 'Item';
+    
+    return await withFeedback(
+      async () => {
+        // Prevent duplicate operations while syncing
+        if (state.syncing) {
+          throw new Error('Please wait for current operation to complete');
         }
-      }
 
-      return { success: true };
-    } catch (error) {
-      console.error('Error removing from cart:', error);
-      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to remove item from cart' });
-      return { success: false, error: error.message };
-    }
+        dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: true });
+        
+        // Always remove from local state first for immediate UI feedback
+        dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
+
+        if (user && authenticatedFetch) {
+          // Remove from backend for authenticated users
+          await retryOperation(async () => {
+            const response = await authenticatedFetch('/api/cart/remove', {
+              method: 'DELETE',
+              body: JSON.stringify({ productId })
+            });
+
+            if (!response || !response.ok) {
+              throw new Error('Failed to sync removal with backend');
+            }
+          });
+        }
+
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: false });
+        return { success: true };
+      },
+      {
+        loadingKey: `remove-from-cart-${productId}`,
+        loadingMessage: `Removing ${itemName} from cart...`,
+        successMessage: `${itemName} removed from cart 🗑️`,
+        errorMessage: `Failed to remove ${itemName} from cart`,
+        itemId: productId
+      }
+    );
   };
 
   const updateQuantity = async (productId, quantity) => {
-    try {
-      dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
-      
-      // Always update local state first for immediate UI feedback
-      dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
-
-      if (user && authenticatedFetch) {
-        // Update on backend for authenticated users
-        try {
-          const response = await authenticatedFetch('/api/cart/update', {
-            method: 'PUT',
-            body: JSON.stringify({ productId, quantity })
-          });
-
-          if (!response || !response.ok) {
-            console.warn('Failed to sync quantity update with backend');
-          }
-        } catch (backendError) {
-          console.warn('Backend sync failed for quantity update:', backendError);
-          // Don't throw error, quantity is already updated in local state
+    const item = state.items.find(item => item._id === productId || item.id === productId);
+    const itemName = item?.name || 'Item';
+    
+    return await withFeedback(
+      async () => {
+        // Prevent duplicate operations while syncing
+        if (state.syncing) {
+          throw new Error('Please wait for current operation to complete');
         }
-      }
 
-      return { success: true };
-    } catch (error) {
-      console.error('Error updating quantity:', error);
-      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to update quantity' });
-      return { success: false, error: error.message };
-    }
+        dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: true });
+        
+        // Always update local state first for immediate UI feedback
+        dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
+
+        if (user && authenticatedFetch) {
+          // Update on backend for authenticated users
+          await retryOperation(async () => {
+            const response = await authenticatedFetch('/api/cart/update', {
+              method: 'PUT',
+              body: JSON.stringify({ productId, quantity })
+            });
+
+            if (!response || !response.ok) {
+              throw new Error('Failed to sync quantity update with backend');
+            }
+          });
+        }
+
+        dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: false });
+        return { success: true };
+      },
+      {
+        loadingKey: `update-quantity-${productId}`,
+        loadingMessage: `Updating ${itemName} quantity...`,
+        successMessage: quantity === 0 
+          ? `${itemName} removed from cart 🗑️` 
+          : `${itemName} quantity updated to ${quantity} ✏️`,
+        errorMessage: `Failed to update ${itemName} quantity`,
+        itemId: productId
+      }
+    );
   };
 
   const clearCart = async () => {
+    // Prevent duplicate operations while syncing
+    if (state.syncing) {
+      console.warn('Cart operation in progress, please wait...');
+      return { success: false, error: 'Please wait for current operation to complete' };
+    }
+
     try {
       dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+      dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: true });
       
       // Always clear local state first for immediate UI feedback
       dispatch({ type: CART_ACTIONS.CLEAR_CART });
@@ -435,13 +483,15 @@ export const CartProvider = ({ children }) => {
       if (user && authenticatedFetch) {
         // Clear cart on backend for authenticated users
         try {
-          const response = await authenticatedFetch('/api/cart/clear', {
-            method: 'DELETE'
-          });
+          await retryOperation(async () => {
+            const response = await authenticatedFetch('/api/cart/clear', {
+              method: 'DELETE'
+            });
 
-          if (!response || !response.ok) {
-            console.warn('Failed to clear cart on backend');
-          }
+            if (!response || !response.ok) {
+              throw new Error('Failed to clear cart on backend');
+            }
+          });
         } catch (backendError) {
           console.warn('Backend sync failed for cart clear:', backendError);
           // Don't throw error, cart is already cleared locally
@@ -453,6 +503,8 @@ export const CartProvider = ({ children }) => {
       console.error('Error clearing cart:', error);
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to clear cart' });
       return { success: false, error: error.message };
+    } finally {
+      dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: false });
     }
   };
 
@@ -523,7 +575,13 @@ export const CartProvider = ({ children }) => {
     getSelectedItems,
     getItemQuantity,
     clearError,
-    loadCartFromBackend
+    loadCartFromBackend,
+    // Include syncing state for components that need to show loading indicators
+    isSyncing: state.syncing,
+    // Expose feedback functions for item-level feedback
+    getItemState,
+    setItemState,
+    clearItemState
   };
 
   return (

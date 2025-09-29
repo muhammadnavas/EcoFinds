@@ -7,13 +7,16 @@ import Help from './components/Help';
 import Home from './components/Home';
 import Login from './components/Login';
 import MyListings from './components/MyListings';
+import Payment from './components/Payment';
 import ProductDetail from './components/ProductDetail';
+import SyncStatusIndicator from './components/SyncStatusIndicator';
+import ToastContainer from './components/ToastContainer';
 import UserPortal from './components/UserPortal';
 import UserProfile from './components/UserProfile';
-import Payment from './components/Payment'; // Add this import
 
 import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { FeedbackProvider } from './context/FeedbackContext';
 
 function App() {
   const [currentView, setCurrentView] = useState('home');
@@ -80,83 +83,89 @@ function App() {
 
   return (
     <AuthProvider>
-      <CartProvider>
-        <div className="App min-h-screen bg-gray-50">
-          {currentView === 'home' && (
-            <Home 
-              onShowAddProduct={handleShowAddProduct} 
-              onShowCart={handleShowCart}
-              onShowCategories={handleShowCategories}
-              onShowLogin={handleShowLogin}
-              onShowProfile={handleShowProfile}
-              onShowDashboard={handleShowUserPortal}
-              onShowHelp={handleShowHelp}
-              onShowProduct={handleShowProduct}
-              refreshTrigger={refreshProducts} 
-            />
-          )}
-          {currentView === 'login' && (
-            <Login onBack={handleBackToHome} />
-          )}
-          {currentView === 'profile' && (
-            <UserProfile 
-              onBack={handleBackToHome}
-              onShowMyListings={handleShowMyListings}
-            />
-          )}
-          {currentView === 'userPortal' && (
-            <UserPortal 
-              onBack={handleBackToHome}
-              onShowProduct={handleShowProduct}
-              onShowHelp={handleShowHelp}
-            />
-          )}
-          {currentView === 'help' && (
-            <Help onBack={handleBackToHome} />
-          )}
-          {currentView === 'myListings' && (
-            <MyListings 
-              onBack={handleBackToHome}
-              onShowProduct={handleShowProduct}
-            />
-          )}
-          {currentView === 'myListings' && (
-            <MyListings 
-              onBack={handleBackToHome}
-              onShowProduct={handleShowProduct}
-            />
-          )}
-          {currentView === 'addProduct' && (
-            <AddProduct 
-              onBack={handleBackToHome} 
-              onProductAdded={handleProductAdded}
-            />
-          )}
-          {currentView === 'cart' && (
-            <CartPage 
-              onBack={handleBackToHome} 
-              onCheckout={handleShowPayment} // Add this prop to CartPage
-            />
-          )}
-          {/* Add the payment view */}
-          {currentView === 'payment' && (
-            <Payment onBack={handleBackToCart} />
-          )}
-          {currentView === 'categories' && (
-            <Categories 
-              onBack={handleBackToHome}
-              onShowProduct={handleShowProduct}
-            />
-          )}
-          {currentView === 'productDetail' && (
-            <ProductDetail 
-              productId={selectedProductId}
-              onBack={handleBackToHome}
-              onShowProduct={handleShowProduct}
-            />
-          )}
-        </div>
-      </CartProvider>
+      <FeedbackProvider>
+        <CartProvider>
+          <div className="App min-h-screen bg-gray-50">
+            {currentView === 'home' && (
+              <Home 
+                onShowAddProduct={handleShowAddProduct} 
+                onShowCart={handleShowCart}
+                onShowCategories={handleShowCategories}
+                onShowLogin={handleShowLogin}
+                onShowProfile={handleShowProfile}
+                onShowDashboard={handleShowUserPortal}
+                onShowHelp={handleShowHelp}
+                onShowProduct={handleShowProduct}
+                refreshTrigger={refreshProducts} 
+              />
+            )}
+            {currentView === 'login' && (
+              <Login onBack={handleBackToHome} />
+            )}
+            {currentView === 'profile' && (
+              <UserProfile 
+                onBack={handleBackToHome}
+                onShowMyListings={handleShowMyListings}
+              />
+            )}
+            {currentView === 'userPortal' && (
+              <UserPortal 
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+                onShowHelp={handleShowHelp}
+              />
+            )}
+            {currentView === 'help' && (
+              <Help onBack={handleBackToHome} />
+            )}
+            {currentView === 'myListings' && (
+              <MyListings 
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+              />
+            )}
+            {currentView === 'myListings' && (
+              <MyListings 
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+              />
+            )}
+            {currentView === 'addProduct' && (
+              <AddProduct 
+                onBack={handleBackToHome} 
+                onProductAdded={handleProductAdded}
+              />
+            )}
+            {currentView === 'cart' && (
+              <CartPage 
+                onBack={handleBackToHome} 
+                onCheckout={handleShowPayment} // Add this prop to CartPage
+              />
+            )}
+            {/* Add the payment view */}
+            {currentView === 'payment' && (
+              <Payment onBack={handleBackToCart} />
+            )}
+            {currentView === 'categories' && (
+              <Categories 
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+              />
+            )}
+            {currentView === 'productDetail' && (
+              <ProductDetail 
+                productId={selectedProductId}
+                onBack={handleBackToHome}
+                onShowProduct={handleShowProduct}
+              />
+            )}
+            
+            {/* Real-time feedback components */}
+            <ToastContainer />
+            <SyncStatusIndicator />
+          </div>
+        </CartProvider>
+      </FeedbackProvider>
     </AuthProvider>
   );
 }
