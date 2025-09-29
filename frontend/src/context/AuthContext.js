@@ -140,6 +140,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('ecofinds-token', data.token);
         localStorage.setItem('ecofinds-user', JSON.stringify(data.user));
 
+        // Dispatch login action - this will trigger cart context to migrate guest cart
         dispatch({ type: AUTH_ACTIONS.LOGIN, payload: { user: data.user, token: data.token } });
         return { success: true, message: data.message };
       } else {
@@ -171,6 +172,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('ecofinds-token', data.token);
         localStorage.setItem('ecofinds-user', JSON.stringify(data.user));
 
+        // Dispatch login action - this will trigger cart context to migrate guest cart
         dispatch({ type: AUTH_ACTIONS.LOGIN, payload: { user: data.user, token: data.token } });
         return { success: true, message: data.message };
       } else {
@@ -225,8 +227,11 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    // Clear authentication data
     localStorage.removeItem('ecofinds-token');
     localStorage.removeItem('ecofinds-user');
+    
+    // Dispatch logout action - this will trigger cart context to handle the transition
     dispatch({ type: AUTH_ACTIONS.LOGOUT });
   };
 

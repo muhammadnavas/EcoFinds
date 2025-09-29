@@ -15,6 +15,7 @@ const CART_ACTIONS = {
   SELECT_ALL: 'SELECT_ALL',
   DESELECT_ALL: 'DESELECT_ALL',
   SET_LOADING: 'SET_LOADING',
+  SET_SYNCING: 'SET_SYNCING',
   SET_ERROR: 'SET_ERROR',
   CLEAR_ERROR: 'CLEAR_ERROR'
 };
@@ -120,11 +121,18 @@ const cartReducer = (state, action) => {
         loading: action.payload
       };
 
+    case CART_ACTIONS.SET_SYNCING:
+      return {
+        ...state,
+        syncing: action.payload
+      };
+
     case CART_ACTIONS.SET_ERROR:
       return {
         ...state,
         error: action.payload,
-        loading: false
+        loading: false,
+        syncing: false
       };
 
     case CART_ACTIONS.CLEAR_ERROR:
@@ -142,15 +150,31 @@ const cartReducer = (state, action) => {
 const initialState = {
   items: [],
   selectedItems: new Set(),
-  loading: false,
+  loading: true,  // Start with loading true to prevent flash of empty cart
   error: null,
-  isOpen: false
+  isOpen: false,
+  syncing: false  // Add syncing state for backend operations
 };
 
 // Cart provider component
 export const CartProvider = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
   const { user, authenticatedFetch } = useAuth();
+
+  // Retry utility function
+  const retryOperation = async (operation, maxRetries = 2) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt === maxRetries) {
+          throw error;
+        }
+        // Wait before retrying (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+      }
+    }
+  };
 
   const loadCartFromLocalStorage = () => {
     const savedCart = localStorage.getItem('ecofinds-cart');
@@ -166,26 +190,90 @@ export const CartProvider = ({ children }) => {
         });
       } catch (error) {
         console.error('Error parsing cart from localStorage:', error);
+        localStorage.removeItem('ecofinds-cart'); // Clear corrupted data
       }
     }
     dispatch({ type: CART_ACTIONS.SET_LOADING, payload: false });
   };
 
-  const loadCartFromBackend = useCallback(async () => {
+  const migrateGuestCartToBackend = useCallback(async (guestCartItems) => {
+    if (!guestCartItems || guestCartItems.length === 0) return;
+    
+    try {
+      // Add each guest cart item to the backend with retry logic
+      for (const item of guestCartItems) {
+        await retryOperation(async () => {
+          const response = await authenticatedFetch('/api/cart/add', {
+            method: 'POST',
+            body: JSON.stringify({
+              productId: item._id || item.id,
+              quantity: item.quantity
+            })
+          });
+          
+          if (!response || !response.ok) {
+            throw new Error(`Failed to migrate item ${item.name || item._id}`);
+          }
+        });
+      }
+      
+      // Clear guest cart from localStorage after successful migration
+      localStorage.removeItem('ecofinds-cart');
+      console.log('Successfully migrated guest cart to user account');
+    } catch (error) {
+      console.error('Error migrating guest cart to backend:', error);
+      // Keep guest cart in localStorage if migration fails
+      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Some items could not be synced to your account' });
+    }
+  }, [authenticatedFetch, retryOperation]);
+
+  const loadCartFromBackend = useCallback(async (shouldMigrateGuestCart = true) => {
     try {
       dispatch({ type: CART_ACTIONS.SET_LOADING, payload: true });
+      
+      // Get guest cart items before loading backend cart
+      let guestCartItems = [];
+      if (shouldMigrateGuestCart) {
+        const savedCart = localStorage.getItem('ecofinds-cart');
+        if (savedCart) {
+          try {
+            const parsedCart = JSON.parse(savedCart);
+            guestCartItems = parsedCart.items || [];
+          } catch (error) {
+            console.error('Error parsing guest cart:', error);
+          }
+        }
+      }
       
       const response = await authenticatedFetch('/api/cart');
       
       if (response && response.ok) {
         const data = await response.json();
-        dispatch({ 
-          type: CART_ACTIONS.LOAD_CART, 
-          payload: {
-            items: data.items || [],
-            selectedItems: data.selectedItems || []
+        
+        // Migrate guest cart items to backend if any exist
+        if (guestCartItems.length > 0) {
+          await migrateGuestCartToBackend(guestCartItems);
+          // Reload cart after migration
+          const updatedResponse = await authenticatedFetch('/api/cart');
+          if (updatedResponse && updatedResponse.ok) {
+            const updatedData = await updatedResponse.json();
+            dispatch({ 
+              type: CART_ACTIONS.LOAD_CART, 
+              payload: {
+                items: updatedData.items || [],
+                selectedItems: new Set(updatedData.selectedItems || [])
+              }
+            });
           }
-        });
+        } else {
+          dispatch({ 
+            type: CART_ACTIONS.LOAD_CART, 
+            payload: {
+              items: data.items || [],
+              selectedItems: new Set(data.selectedItems || [])
+            }
+          });
+        }
       } else {
         // If backend fails, fall back to localStorage
         console.warn('Failed to load cart from backend, falling back to localStorage');
@@ -193,24 +281,35 @@ export const CartProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Error loading cart from backend:', error);
-      // Clear any potentially corrupted cart data and start fresh
-      dispatch({ type: CART_ACTIONS.CLEAR_CART });
+      // Don't clear cart on error, fall back to localStorage
       loadCartFromLocalStorage();
     } finally {
       dispatch({ type: CART_ACTIONS.SET_LOADING, payload: false });
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, migrateGuestCartToBackend]);
 
-  // Load cart from localStorage on mount
+  // Load cart when user authentication state changes
   useEffect(() => {
     if (user) {
-      // Load from backend for authenticated users
-      loadCartFromBackend();
+      // Load from backend for authenticated users and migrate guest cart
+      loadCartFromBackend(true);
     } else {
       // Load from localStorage for guest users
       loadCartFromLocalStorage();
     }
   }, [user, loadCartFromBackend]);
+
+  // Handle logout - clear backend cart reference but keep local items for guest mode
+  useEffect(() => {
+    if (!user && state.items.length > 0) {
+      // User logged out, save current cart items to localStorage for guest mode
+      const cartData = {
+        items: state.items,
+        selectedItems: Array.from(state.selectedItems)
+      };
+      localStorage.setItem('ecofinds-cart', JSON.stringify(cartData));
+    }
+  }, [user, state.items, state.selectedItems]);
 
   // Save cart to localStorage whenever items change (for guest users)
   useEffect(() => {
@@ -227,34 +326,34 @@ export const CartProvider = ({ children }) => {
   const addToCart = async (product, quantity = 1) => {
     try {
       dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+      
+      // Always add to local state first for immediate UI feedback
+      dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
 
       if (user && authenticatedFetch) {
         // Save to backend for authenticated users
-        const response = await authenticatedFetch('/api/cart/add', {
-          method: 'POST',
-          body: JSON.stringify({
-            productId: product._id,
-            quantity: quantity
-          })
-        });
+        try {
+          const response = await authenticatedFetch('/api/cart/add', {
+            method: 'POST',
+            body: JSON.stringify({
+              productId: product._id,
+              quantity: quantity
+            })
+          });
 
-        if (response && response.ok) {
-          const data = await response.json();
-          dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
-        } else {
-          throw new Error('Failed to add item to cart');
+          if (!response || !response.ok) {
+            console.warn('Failed to sync cart with backend, item saved locally');
+          }
+        } catch (backendError) {
+          console.warn('Backend sync failed, item saved locally:', backendError);
+          // Don't throw error, item is already in local state
         }
-      } else {
-        // Add to local state for guest users
-        dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
       }
 
       return { success: true };
     } catch (error) {
       console.error('Error adding to cart:', error);
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to add item to cart' });
-      // Still add to local state even if backend fails
-      dispatch({ type: CART_ACTIONS.ADD_ITEM, payload: { ...product, quantity } });
       return { success: false, error: error.message };
     }
   };
@@ -262,30 +361,31 @@ export const CartProvider = ({ children }) => {
   const removeFromCart = async (productId) => {
     try {
       dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+      
+      // Always remove from local state first for immediate UI feedback
+      dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
 
       if (user && authenticatedFetch) {
         // Remove from backend for authenticated users
-        const response = await authenticatedFetch('/api/cart/remove', {
-          method: 'DELETE',
-          body: JSON.stringify({ productId })
-        });
+        try {
+          const response = await authenticatedFetch('/api/cart/remove', {
+            method: 'DELETE',
+            body: JSON.stringify({ productId })
+          });
 
-        if (response && response.ok) {
-          dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
-        } else {
-          throw new Error('Failed to remove item from cart');
+          if (!response || !response.ok) {
+            console.warn('Failed to sync cart removal with backend');
+          }
+        } catch (backendError) {
+          console.warn('Backend sync failed for removal:', backendError);
+          // Don't throw error, item is already removed from local state
         }
-      } else {
-        // Remove from local state for guest users
-        dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
       }
 
       return { success: true };
     } catch (error) {
       console.error('Error removing from cart:', error);
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to remove item from cart' });
-      // Still remove from local state even if backend fails
-      dispatch({ type: CART_ACTIONS.REMOVE_ITEM, payload: productId });
       return { success: false, error: error.message };
     }
   };
@@ -293,30 +393,31 @@ export const CartProvider = ({ children }) => {
   const updateQuantity = async (productId, quantity) => {
     try {
       dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+      
+      // Always update local state first for immediate UI feedback
+      dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
 
       if (user && authenticatedFetch) {
         // Update on backend for authenticated users
-        const response = await authenticatedFetch('/api/cart/update', {
-          method: 'PUT',
-          body: JSON.stringify({ productId, quantity })
-        });
+        try {
+          const response = await authenticatedFetch('/api/cart/update', {
+            method: 'PUT',
+            body: JSON.stringify({ productId, quantity })
+          });
 
-        if (response && response.ok) {
-          dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
-        } else {
-          throw new Error('Failed to update quantity');
+          if (!response || !response.ok) {
+            console.warn('Failed to sync quantity update with backend');
+          }
+        } catch (backendError) {
+          console.warn('Backend sync failed for quantity update:', backendError);
+          // Don't throw error, quantity is already updated in local state
         }
-      } else {
-        // Update local state for guest users
-        dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
       }
 
       return { success: true };
     } catch (error) {
       console.error('Error updating quantity:', error);
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to update quantity' });
-      // Still update local state even if backend fails
-      dispatch({ type: CART_ACTIONS.UPDATE_QUANTITY, payload: { id: productId, quantity } });
       return { success: false, error: error.message };
     }
   };
@@ -324,30 +425,33 @@ export const CartProvider = ({ children }) => {
   const clearCart = async () => {
     try {
       dispatch({ type: CART_ACTIONS.CLEAR_ERROR });
+      
+      // Always clear local state first for immediate UI feedback
+      dispatch({ type: CART_ACTIONS.CLEAR_CART });
+      
+      // Clear localStorage for guest users
+      localStorage.removeItem('ecofinds-cart');
 
       if (user && authenticatedFetch) {
         // Clear cart on backend for authenticated users
-        const response = await authenticatedFetch('/api/cart/clear', {
-          method: 'DELETE'
-        });
+        try {
+          const response = await authenticatedFetch('/api/cart/clear', {
+            method: 'DELETE'
+          });
 
-        if (response && response.ok) {
-          dispatch({ type: CART_ACTIONS.CLEAR_CART });
-        } else {
-          throw new Error('Failed to clear cart');
+          if (!response || !response.ok) {
+            console.warn('Failed to clear cart on backend');
+          }
+        } catch (backendError) {
+          console.warn('Backend sync failed for cart clear:', backendError);
+          // Don't throw error, cart is already cleared locally
         }
-      } else {
-        // Clear local state and localStorage for guest users
-        dispatch({ type: CART_ACTIONS.CLEAR_CART });
-        localStorage.removeItem('ecofinds-cart');
       }
 
       return { success: true };
     } catch (error) {
       console.error('Error clearing cart:', error);
       dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Failed to clear cart' });
-      // Still clear local state even if backend fails
-      dispatch({ type: CART_ACTIONS.CLEAR_CART });
       return { success: false, error: error.message };
     }
   };
