@@ -21,6 +21,7 @@ import { AuthProvider } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
 import { ComparisonProvider, useComparison } from './context/ComparisonContext';
 import { FeedbackProvider } from './context/FeedbackContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { WishlistProvider } from './context/WishlistContext';
 
 function App() {
@@ -96,9 +97,10 @@ function App() {
   return (
     <AuthProvider>
       <FeedbackProvider>
-        <CartProvider>
-          <WishlistProvider>
-            <ComparisonProvider>
+        <NotificationProvider>
+          <CartProvider>
+            <WishlistProvider>
+              <ComparisonProvider>
               <ComparisonWrapper>
               <div className="App min-h-screen bg-gray-50">
             {currentView === 'home' && (
@@ -183,15 +185,16 @@ function App() {
             )}
             
             {/* Real-time feedback components */}
-                <ToastContainer />
-                <SyncStatusIndicator />
-              </div>
-            </ComparisonWrapper>
-          </ComparisonProvider>
-        </WishlistProvider>
-      </CartProvider>
-    </FeedbackProvider>
-  </AuthProvider>
+            <ToastContainer />
+            <SyncStatusIndicator />
+          </div>
+        </ComparisonWrapper>
+      </ComparisonProvider>
+    </WishlistProvider>
+  </CartProvider>
+</NotificationProvider>
+</FeedbackProvider>
+</AuthProvider>
   );
 
 }
