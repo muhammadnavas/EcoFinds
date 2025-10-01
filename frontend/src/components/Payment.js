@@ -1,70 +1,54 @@
-import { CardElement, Elements, useElements, useStripe } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
 import { AlertCircle, ArrowLeft, CheckCircle, CreditCard, Loader, Lock, ShoppingBag, User } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-// Initialize Stripe
-const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY || 'pk_test_your_stripe_publishable_key');
-
-// Card Element styling
-const cardElementOptions = {
-  style: {
-    base: {
-      fontSize: '16px',
-      color: '#424770',
-      '::placeholder': {
-        color: '#aab7c4',
-      },
-      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    },
-    invalid: {
-      color: '#9e2146',
-    },
-  },
-  hidePostalCode: true,
-};
-
-// Real payment processing with Stripe
-const processPayment = async (stripe, elements, formData, clientSecret) => {
-  const cardElement = elements.getElement(CardElement);
-
-  const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-    payment_method: {
-      card: cardElement,
-      billing_details: {
-        name: formData.cardName,
-        email: formData.email,
-        address: formData.billingAddress ? {
-          line1: formData.billingAddress,
-          city: formData.city,
-          postal_code: formData.zipCode,
-        } : undefined,
-      },
-    },
-  });
-
-  if (error) {
-    throw new Error(error.message);
+// Mock payment processing function
+const processPayment = async (formData) => {
+  // Simulate API call delay
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  // Generate mock transaction ID
+  const transactionId = `demo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Mock payment scenarios based on card number
+  const cardNumber = formData.cardNumber?.replace(/\s/g, '') || '';
+  
+  if (cardNumber.startsWith('4000')) {
+    throw new Error('Payment declined. Please try a different card number.');
+  } else if (cardNumber.startsWith('4242')) {
+    return {
+      success: true,
+      transactionId,
+      message: 'Demo payment completed successfully! (Visa)',
+      cardBrand: 'Visa'
+    };
+  } else if (cardNumber.startsWith('5555')) {
+    return {
+      success: true,
+      transactionId,
+      message: 'Demo payment completed successfully! (Mastercard)',
+      cardBrand: 'Mastercard'
+    };
+  } else {
+    return {
+      success: true,
+      transactionId,
+      message: 'Demo payment completed successfully!',
+      cardBrand: 'Demo Card'
+    };
   }
-
-  return {
-    success: true,
-    paymentIntent,
-    transactionId: paymentIntent.id,
-    message: 'Payment processed successfully!'
-  };
 };
 
 // Payment Form Component
 const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }) => {
-  const stripe = useStripe();
-  const elements = useElements();
   const { user } = useAuth();
   
   const [formData, setFormData] = useState({
     email: user?.email || '',
     cardName: user?.name || '',
+    cardNumber: '',
+    expiryDate: '',
+    cvv: '',
     billingAddress: '',
     city: '',
     zipCode: ''
@@ -74,57 +58,15 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [errors, setErrors] = useState({});
   const [showBilling, setShowBilling] = useState(false);
-  const [clientSecret, setClientSecret] = useState('');
-  const [paymentIntentId, setPaymentIntentId] = useState('');
-  const [transactionId, setTransactionId] = useState('');
-
-  // Create payment intent when component mounts
-  useEffect(() => {
-    if (cartTotal > 0) {
-      createPaymentIntent();
-    }
-  }, [cartTotal, createPaymentIntent]);
-
-  const createPaymentIntent = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/create-payment-intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: cartTotal,
-          currency: 'usd',
-          email: user?.email || formData.email,
-          customerName: user?.name || formData.cardName,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create payment intent');
-      }
-
-      const data = await response.json();
-      setClientSecret(data.clientSecret);
-      setPaymentIntentId(data.paymentIntentId);
-      setTransactionId(data.transactionId);
-    } catch (error) {
-      console.error('Error creating payment intent:', error);
-      setPaymentStatus({
-        type: 'error',
-        message: 'Failed to initialize payment. Please try again.'
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [cartTotal, user?.email, user?.name, formData.email, formData.cardName]);
 
   const validateForm = () => {
     const newErrors = {};
     
     if (!formData.email) newErrors.email = 'Email is required';
     if (!formData.cardName) newErrors.cardName = 'Cardholder name is required';
+    if (!formData.cardNumber) newErrors.cardNumber = 'Card number is required';
+    if (!formData.expiryDate) newErrors.expiryDate = 'Expiry date is required';
+    if (!formData.cvv) newErrors.cvv = 'CVV is required';
     
     // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -132,9 +74,19 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
       newErrors.email = 'Please enter a valid email';
     }
     
-    // Check if Stripe elements are ready
-    if (!stripe || !elements) {
-      newErrors.card = 'Payment system not ready. Please wait a moment.';
+    // Card number validation (basic)
+    if (formData.cardNumber && formData.cardNumber.replace(/\s/g, '').length < 13) {
+      newErrors.cardNumber = 'Please enter a valid card number';
+    }
+    
+    // Expiry date validation (MM/YY format)
+    if (formData.expiryDate && !/^(0[1-9]|1[0-2])\/?([0-9]{2})$/.test(formData.expiryDate)) {
+      newErrors.expiryDate = 'Please enter a valid expiry date (MM/YY)';
+    }
+    
+    // CVV validation
+    if (formData.cvv && !/^[0-9]{3,4}$/.test(formData.cvv)) {
+      newErrors.cvv = 'Please enter a valid CVV';
     }
     
     setErrors(newErrors);
@@ -143,10 +95,26 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+    let formattedValue = value;
+    
+    // Format card number with spaces
+    if (name === 'cardNumber') {
+      formattedValue = value.replace(/\s/g, '').replace(/(\d{4})/g, '$1 ').trim();
+    }
+    
+    // Format expiry date with slash
+    if (name === 'expiryDate') {
+      formattedValue = value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2');
+    }
+    
+    // Format CVV (numbers only)
+    if (name === 'cvv') {
+      formattedValue = value.replace(/\D/g, '');
+    }
     
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: formattedValue
     }));
     
     if (errors[name]) {
@@ -161,55 +129,39 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
     e.preventDefault();
     
     if (!validateForm()) return;
-    if (!stripe || !elements || !clientSecret) {
-      setPaymentStatus({
-        type: 'error',
-        message: 'Payment system not ready. Please wait a moment and try again.'
-      });
-      return;
-    }
     
     setLoading(true);
     setPaymentStatus(null);
     
     try {
-      // Process payment with Stripe
-      const result = await processPayment(stripe, elements, formData, clientSecret);
+      // Process payment with mock system
+      const result = await processPayment(formData);
       
-      // Confirm payment with backend
-      const confirmResponse = await fetch('/api/confirm-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('ecofinds-token')}`
-        },
-        body: JSON.stringify({
-          paymentIntentId: result.paymentIntent.id,
-          transactionId: transactionId,
-          orderItems: cartItems,
-          shippingAddress: showBilling ? {
-            address: formData.billingAddress,
-            city: formData.city,
-            zipCode: formData.zipCode
-          } : undefined
-        }),
-      });
-
-      if (!confirmResponse.ok) {
-        throw new Error('Payment confirmation failed');
-      }
-
-      const confirmData = await confirmResponse.json();
+      // Mock backend confirmation
+      const orderData = {
+        transactionId: result.transactionId,
+        orderItems: cartItems,
+        totalAmount: cartTotal,
+        finalAmount: parseFloat(getFinalTotal()),
+        customerEmail: formData.email,
+        customerName: formData.cardName,
+        shippingAddress: showBilling ? {
+          address: formData.billingAddress,
+          city: formData.city,
+          zipCode: formData.zipCode
+        } : undefined,
+        status: 'confirmed',
+        createdAt: new Date().toISOString()
+      };
       
       setPaymentStatus({
         type: 'success',
         message: result.message,
-        transactionId: confirmData.payment.transactionId,
-        paymentIntent: result.paymentIntent
+        transactionId: result.transactionId
       });
       
-      // Clear cart after successful payment would be handled by parent component
-      onPaymentSuccess && onPaymentSuccess(confirmData);
+      // Clear cart after successful payment
+      onPaymentSuccess && onPaymentSuccess(orderData);
       
     } catch (error) {
       console.error('Payment error:', error);
@@ -388,14 +340,63 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Card Details
+                        Card Number
                       </label>
-                      <div className="w-full px-4 py-3 border border-gray-300 rounded-xl focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition duration-200">
-                        <CardElement options={cardElementOptions} />
-                      </div>
-                      {errors.card && (
-                        <p className="mt-1 text-sm text-red-600">{errors.card}</p>
+                      <input
+                        type="text"
+                        name="cardNumber"
+                        value={formData.cardNumber}
+                        onChange={handleInputChange}
+                        className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 ${
+                          errors.cardNumber ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="1234 5678 9012 3456"
+                        maxLength="19"
+                      />
+                      {errors.cardNumber && (
+                        <p className="mt-1 text-sm text-red-600">{errors.cardNumber}</p>
                       )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Expiry Date
+                        </label>
+                        <input
+                          type="text"
+                          name="expiryDate"
+                          value={formData.expiryDate}
+                          onChange={handleInputChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 ${
+                            errors.expiryDate ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                          placeholder="MM/YY"
+                          maxLength="5"
+                        />
+                        {errors.expiryDate && (
+                          <p className="mt-1 text-sm text-red-600">{errors.expiryDate}</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          CVV
+                        </label>
+                        <input
+                          type="text"
+                          name="cvv"
+                          value={formData.cvv}
+                          onChange={handleInputChange}
+                          className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200 ${
+                            errors.cvv ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                          placeholder="123"
+                          maxLength="4"
+                        />
+                        {errors.cvv && (
+                          <p className="mt-1 text-sm text-red-600">{errors.cvv}</p>
+                        )}
+                      </div>
                     </div>
 
                     <div>
@@ -485,18 +486,34 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
                   </div>
                 )}
 
+                {/* Demo Notice */}
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-yellow-800 mb-1">Demo Payment System</h4>
+                      <p className="text-yellow-700 text-sm mb-2">
+                        This is a demonstration payment form. No real charges will be made.
+                      </p>
+                      <p className="text-yellow-600 text-xs">
+                        Use any card number except those starting with "4000" to simulate successful payment.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Security Notice */}
                 <div className="flex items-center space-x-2 p-4 bg-green-50 border border-green-200 rounded-xl">
                   <Lock className="h-5 w-5 text-green-600 flex-shrink-0" />
-                  <span className="text-green-700 text-sm">Your payment information is secure and encrypted</span>
+                  <span className="text-green-700 text-sm">Your information is handled securely in this demo</span>
                 </div>
 
                 {/* Submit Button */}
                 <button
                   onClick={handleSubmit}
-                  disabled={loading || !stripe || !elements}
+                  disabled={loading}
                   className={`w-full py-4 px-6 rounded-xl font-semibold text-lg transition duration-200 flex items-center justify-center space-x-2 ${
-                    loading || !stripe || !elements
+                    loading
                       ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 transform hover:scale-[1.02]'
                   } text-white`}
@@ -526,17 +543,15 @@ const PaymentForm = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }
   );
 };
 
-// Main Payment component wrapper with Stripe provider
+// Main Payment component - simplified without Stripe
 const Payment = ({ onBack, cartItems = [], cartTotal = 0, onPaymentSuccess }) => {
   return (
-    <Elements stripe={stripePromise}>
-      <PaymentForm 
-        onBack={onBack} 
-        cartItems={cartItems} 
-        cartTotal={cartTotal}
-        onPaymentSuccess={onPaymentSuccess}
-      />
-    </Elements>
+    <PaymentForm 
+      onBack={onBack} 
+      cartItems={cartItems} 
+      cartTotal={cartTotal}
+      onPaymentSuccess={onPaymentSuccess}
+    />
   );
 };
 
