@@ -218,7 +218,6 @@ const paymentSchema = new mongoose.Schema({
     enum: ['pending', 'completed', 'failed', 'refunded'],
     default: 'pending'
   },
-  stripePaymentIntentId: String,
   transactionId: { type: String, unique: true },
   customerName: String,
   createdAt: { type: Date, default: Date.now },
@@ -340,7 +339,7 @@ const Order = mongoose.model('Order', orderSchema);
 
 // Routes
 
-// Create Payment Intent
+// Create Payment Intent (Mock)
 app.post('/api/create-payment-intent', async (req, res) => {
   try {
     const { amount, currency = 'usd', email, customerName } = req.body;
@@ -352,25 +351,15 @@ app.post('/api/create-payment-intent', async (req, res) => {
       });
     }
 
-    // Create payment intent with Stripe
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // Convert to cents
-      currency,
-      metadata: {
-        email,
-        customerName: customerName || ''
-      }
-    });
-
     // Generate unique transaction ID
-    const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const transactionId = `demo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const mockPaymentIntentId = `pi_demo_${Date.now()}`;
 
     // Save payment record to database
     const payment = new Payment({
       email,
       amount,
       currency,
-      stripePaymentIntentId: paymentIntent.id,
       transactionId,
       customerName,
       status: 'pending'
@@ -379,9 +368,10 @@ app.post('/api/create-payment-intent', async (req, res) => {
     await payment.save();
 
     res.json({
-      clientSecret: paymentIntent.client_secret,
+      success: true,
       transactionId,
-      paymentIntentId: paymentIntent.id
+      paymentIntentId: mockPaymentIntentId,
+      message: 'Demo payment intent created'
     });
 
   } catch (error) {
@@ -393,7 +383,7 @@ app.post('/api/create-payment-intent', async (req, res) => {
   }
 });
 
-// Confirm Payment and Create Order
+// Confirm Payment and Create Order (Mock)
 app.post('/api/confirm-payment', authMiddleware, async (req, res) => {
   try {
     const { paymentIntentId, transactionId, orderItems, shippingAddress } = req.body;
@@ -405,14 +395,8 @@ app.post('/api/confirm-payment', authMiddleware, async (req, res) => {
       });
     }
 
-    // Retrieve payment intent from Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
     // Find payment record in database
-    const payment = await Payment.findOne({ 
-      transactionId,
-      stripePaymentIntentId: paymentIntentId 
-    });
+    const payment = await Payment.findOne({ transactionId });
 
     if (!payment) {
       return res.status(404).json({ 
@@ -420,21 +404,15 @@ app.post('/api/confirm-payment', authMiddleware, async (req, res) => {
       });
     }
 
-    // Update payment status based on Stripe status
-    let status = 'pending';
-    if (paymentIntent.status === 'succeeded') {
-      status = 'completed';
-    } else if (paymentIntent.status === 'payment_failed') {
-      status = 'failed';
-    }
-
+    // Mock payment processing - always succeed for demo
+    const status = 'completed';
     payment.status = status;
     payment.updatedAt = new Date();
     await payment.save();
 
     // Create order if payment succeeded and orderItems provided
     let order = null;
-    if (paymentIntent.status === 'succeeded' && orderItems && orderItems.length > 0) {
+    if (orderItems && orderItems.length > 0) {
       const totalAmount = orderItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const tax = totalAmount * 0.08; // 8% tax
       const finalAmount = totalAmount + tax;
@@ -497,7 +475,7 @@ app.post('/api/confirm-payment', authMiddleware, async (req, res) => {
         finalAmount: order.finalAmount,
         items: order.items
       } : null,
-      stripeStatus: paymentIntent.status
+      mockStatus: 'succeeded'
     });
 
   } catch (error) {
@@ -571,55 +549,9 @@ app.get('/api/payments/:email', async (req, res) => {
   }
 });
 
-// Webhook endpoint for Stripe events
-app.post('/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
 
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.log(`Webhook signature verification failed.`, err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
 
-  // Handle the event
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntent = event.data.object;
-      await updatePaymentStatus(paymentIntent.id, 'completed');
-      console.log('Payment succeeded:', paymentIntent.id);
-      break;
-    
-    case 'payment_intent.payment_failed':
-      const failedPayment = event.data.object;
-      await updatePaymentStatus(failedPayment.id, 'failed');
-      console.log('Payment failed:', failedPayment.id);
-      break;
-    
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
-
-  res.json({received: true});
-});
-
-// Helper function to update payment status
-async function updatePaymentStatus(stripePaymentIntentId, status) {
-  try {
-    await Payment.updateOne(
-      { stripePaymentIntentId },
-      { 
-        status, 
-        updatedAt: new Date() 
-      }
-    );
-  } catch (error) {
-    console.error('Error updating payment status:', error);
-  }
-}
-
-// Refund Payment
+// Refund Payment (Mock)
 app.post('/api/refund-payment', async (req, res) => {
   try {
     const { transactionId, amount, reason = 'requested_by_customer' } = req.body;
@@ -645,12 +577,9 @@ app.post('/api/refund-payment', async (req, res) => {
       });
     }
 
-    // Create refund with Stripe
-    const refund = await stripe.refunds.create({
-      payment_intent: payment.stripePaymentIntentId,
-      amount: amount ? Math.round(amount * 100) : undefined, // Partial refund if amount specified
-      reason
-    });
+    // Mock refund processing
+    const mockRefundId = `re_demo_${Date.now()}`;
+    const refundAmount = amount || payment.amount;
 
     // Update payment status
     payment.status = 'refunded';
@@ -660,14 +589,16 @@ app.post('/api/refund-payment', async (req, res) => {
     res.json({
       success: true,
       refund: {
-        id: refund.id,
-        amount: refund.amount / 100,
-        status: refund.status
+        id: mockRefundId,
+        amount: refundAmount,
+        status: 'succeeded',
+        reason
       },
       payment: {
         transactionId: payment.transactionId,
         status: payment.status
-      }
+      },
+      message: 'Demo refund processed successfully'
     });
 
   } catch (error) {
