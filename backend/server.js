@@ -799,16 +799,19 @@ app.get('/api/cart', authMiddleware, async (req, res) => {
     res.json({
       items: validItems.map(item => ({
         _id: item.productId._id,
-        id: item.productId._id,
+        id: item.productId._id, // Keep for compatibility
         name: item.productId.name,
         price: item.productId.price,
-        image: item.productId.imageUrl,
+        image: item.productId.imageUrl || item.productId.image,
         seller: item.productId.seller,
         sellerId: item.productId.userId,
         quantity: item.quantity,
         addedDate: item.addedAt,
         inStock: item.productId.inStock !== false,
         condition: item.productId.condition || 'Good',
+        category: item.productId.category,
+        description: item.productId.description,
+        originalPrice: item.productId.originalPrice,
         productId: item.productId._id
       })),
       selectedItems: cart.selectedItems

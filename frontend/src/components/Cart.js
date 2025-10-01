@@ -10,6 +10,7 @@ const Cart = ({ onBack }) => {
     selectedItems, 
     loading, 
     error,
+    syncing,
     updateQuantity: updateCartQuantity, 
     removeFromCart,
     toggleSelectItem: toggleCartItemSelection,
@@ -23,21 +24,42 @@ const Cart = ({ onBack }) => {
   
   const [updating, setUpdating] = useState({});
   const [showPayment, setShowPayment] = useState(false);
+  const [localError, setLocalError] = useState(null);
 
   // Clear errors when component mounts
   useEffect(() => {
     if (error) {
-      clearError();
+      const timer = setTimeout(() => {
+        clearError();
+      }, 5000); // Auto-clear error after 5 seconds
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [error, clearError]);
+
+  // Clear local errors automatically
+  useEffect(() => {
+    if (localError) {
+      const timer = setTimeout(() => {
+        setLocalError(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [localError]);
 
   // Handle proceeding to checkout
   const handleProceedToCheckout = () => {
     const selectedCartItems = getSelectedItems();
     if (selectedCartItems.length === 0) {
-      alert('Please select items to checkout');
+      setLocalError('Please select items to checkout');
       return;
     }
+    
+    // Check if user is logged in for checkout
+    if (!user) {
+      setLocalError('Please log in to proceed with checkout');
+      return;
+    }
+    
     setShowPayment(true);
   };
 
@@ -70,11 +92,16 @@ const Cart = ({ onBack }) => {
     if (newQuantity < 1) return;
     
     setUpdating(prev => ({ ...prev, [itemId]: true }));
+    setLocalError(null); // Clear any previous errors
     
     try {
-      await updateCartQuantity(itemId, newQuantity);
+      const result = await updateCartQuantity(itemId, newQuantity);
+      if (!result.success) {
+        setLocalError(result.error || 'Failed to update quantity');
+      }
     } catch (error) {
       console.error('Error updating quantity:', error);
+      setLocalError('Failed to update quantity. Please try again.');
     } finally {
       setUpdating(prev => ({ ...prev, [itemId]: false }));
     }
@@ -82,11 +109,16 @@ const Cart = ({ onBack }) => {
 
   const removeItem = async (itemId) => {
     setUpdating(prev => ({ ...prev, [itemId]: true }));
+    setLocalError(null); // Clear any previous errors
     
     try {
-      await removeFromCart(itemId);
+      const result = await removeFromCart(itemId);
+      if (!result.success) {
+        setLocalError(result.error || 'Failed to remove item');
+      }
     } catch (error) {
       console.error('Error removing item:', error);
+      setLocalError('Failed to remove item. Please try again.');
     } finally {
       setUpdating(prev => ({ ...prev, [itemId]: false }));
     }
@@ -130,13 +162,53 @@ const Cart = ({ onBack }) => {
               </svg>
               Back to Dashboard
             </button>
-            <h1 className="text-2xl font-bold text-gray-800">Shopping Cart</h1>
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-gray-800">Shopping Cart</h1>
+              {syncing && (
+                <div className="flex items-center justify-center mt-1 text-sm text-blue-600">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1"></div>
+                  Syncing...
+                </div>
+              )}
+            </div>
             <div className="text-sm text-gray-600">
               {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}
+              {!user && (
+                <div className="text-xs text-orange-600 mt-1">
+                  Guest Mode
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Error Messages */}
+      {(error || localError) && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <p className="text-red-800 text-sm font-medium">
+                {error || localError}
+              </p>
+              <button
+                onClick={() => {
+                  clearError();
+                  setLocalError(null);
+                }}
+                className="ml-auto text-red-600 hover:text-red-800"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {cartItems.length === 0 ? (
@@ -175,14 +247,14 @@ const Cart = ({ onBack }) => {
 
               {/* Cart Items List */}
               {cartItems.map((item) => (
-                <div key={item.id} className={`bg-white rounded-lg shadow-sm p-6 ${!item.inStock ? 'opacity-60' : ''}`}>
+                <div key={item._id} className={`bg-white rounded-lg shadow-sm p-6 ${!item.inStock ? 'opacity-60' : ''}`}>
                   <div className="flex items-start space-x-4">
                     {/* Checkbox */}
                     <div className="pt-2">
                       <input
                         type="checkbox"
-                        checked={selectedItems.has(item.id)}
-                        onChange={() => toggleSelectItem(item.id)}
+                        checked={selectedItems.has(item._id)}
+                        onChange={() => toggleSelectItem(item._id)}
                         disabled={!item.inStock}
                         className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500 disabled:opacity-50"
                       />
@@ -234,8 +306,8 @@ const Cart = ({ onBack }) => {
                           {/* Quantity Controls */}
                           <div className="flex items-center border border-gray-300 rounded-lg">
                             <button
-                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                              disabled={item.quantity <= 1 || updating[item.id] || !item.inStock}
+                              onClick={() => updateQuantity(item._id, item.quantity - 1)}
+                              disabled={item.quantity <= 1 || updating[item._id] || !item.inStock}
                               className="p-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,15 +315,15 @@ const Cart = ({ onBack }) => {
                               </svg>
                             </button>
                             <span className="px-4 py-2 border-l border-r border-gray-300 min-w-[3rem] text-center">
-                              {updating[item.id] ? (
+                              {updating[item._id] ? (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mx-auto"></div>
                               ) : (
                                 item.quantity
                               )}
                             </span>
                             <button
-                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                              disabled={updating[item.id] || !item.inStock}
+                              onClick={() => updateQuantity(item._id, item.quantity + 1)}
+                              disabled={updating[item._id] || !item.inStock}
                               className="p-2 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -262,11 +334,11 @@ const Cart = ({ onBack }) => {
 
                           {/* Remove Button */}
                           <button
-                            onClick={() => removeItem(item.id)}
-                            disabled={updating[item.id]}
+                            onClick={() => removeItem(item._id)}
+                            disabled={updating[item._id]}
                             className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
                           >
-                            {updating[item.id] ? 'Removing...' : 'Remove'}
+                            {updating[item._id] ? 'Removing...' : 'Remove'}
                           </button>
 
                           {/* Subtotal */}
@@ -308,11 +380,32 @@ const Cart = ({ onBack }) => {
 
                 <button
                   onClick={handleProceedToCheckout}
-                  disabled={selectedItems.size === 0}
-                  className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={selectedItems.size === 0 || syncing}
+                  className="w-full bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  Proceed to Checkout ({selectedItems.size})
+                  {syncing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Syncing...
+                    </>
+                  ) : (
+                    `Proceed to Checkout (${selectedItems.size})`
+                  )}
                 </button>
+                
+                {!user && selectedItems.size > 0 && (
+                  <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="flex items-start">
+                      <svg className="w-5 h-5 text-orange-600 mr-2 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-orange-800">Login Required</p>
+                        <p className="text-sm text-orange-700 mt-1">You need to log in to complete your purchase. Your cart will be saved.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">

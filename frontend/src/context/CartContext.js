@@ -179,57 +179,84 @@ export const CartProvider = ({ children }) => {
   }, []);
 
   const loadCartFromLocalStorage = () => {
-    const savedCart = localStorage.getItem('ecofinds-cart');
-    if (savedCart) {
-      try {
+    try {
+      const savedCart = localStorage.getItem('ecofinds-cart');
+      if (savedCart) {
         const parsedCart = JSON.parse(savedCart);
+        // Ensure items have proper structure with _id field
+        const normalizedItems = (parsedCart.items || []).map(item => ({
+          ...item,
+          _id: item._id || item.id, // Normalize ID field
+          id: item._id || item.id   // Keep compatibility
+        }));
+        
         dispatch({ 
           type: CART_ACTIONS.LOAD_CART, 
           payload: {
-            items: parsedCart.items || [],
+            items: normalizedItems,
             selectedItems: new Set(parsedCart.selectedItems || [])
           }
         });
-      } catch (error) {
-        console.error('Error parsing cart from localStorage:', error);
-        localStorage.removeItem('ecofinds-cart'); // Clear corrupted data
       }
+    } catch (error) {
+      console.error('Error parsing cart from localStorage:', error);
+      localStorage.removeItem('ecofinds-cart'); // Clear corrupted data
+    } finally {
+      dispatch({ type: CART_ACTIONS.SET_LOADING, payload: false });
     }
-    dispatch({ type: CART_ACTIONS.SET_LOADING, payload: false });
   };
 
   const migrateGuestCartToBackend = useCallback(async (guestCartItems) => {
     if (!guestCartItems || guestCartItems.length === 0) return;
     
     try {
+      dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: true });
       showInfo(`Syncing ${guestCartItems.length} item(s) to your account... 🔄`, 2000);
+      
+      let successCount = 0;
+      let failureCount = 0;
       
       // Add each guest cart item to the backend with retry logic
       for (const item of guestCartItems) {
-        await retryOperation(async () => {
-          const response = await authenticatedFetch('/api/cart/add', {
-            method: 'POST',
-            body: JSON.stringify({
-              productId: item._id || item.id,
-              quantity: item.quantity
-            })
+        try {
+          await retryOperation(async () => {
+            const response = await authenticatedFetch('/api/cart/add', {
+              method: 'POST',
+              body: JSON.stringify({
+                productId: item._id || item.id,
+                quantity: item.quantity || 1
+              })
+            });
+            
+            if (!response || !response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              throw new Error(errorData.message || `Failed to migrate item ${item.name || item._id}`);
+            }
           });
-          
-          if (!response || !response.ok) {
-            throw new Error(`Failed to migrate item ${item.name || item._id}`);
-          }
-        });
+          successCount++;
+        } catch (itemError) {
+          console.error(`Failed to migrate item ${item.name || item._id}:`, itemError);
+          failureCount++;
+        }
       }
       
-      // Clear guest cart from localStorage after successful migration
-      localStorage.removeItem('ecofinds-cart');
-      showSuccess(`Successfully synced ${guestCartItems.length} item(s) to your account! ✨`);
-      console.log('Successfully migrated guest cart to user account');
+      if (successCount > 0) {
+        // Clear guest cart from localStorage after successful migration
+        localStorage.removeItem('ecofinds-cart');
+        showSuccess(`Successfully synced ${successCount} item(s) to your account! ✨`);
+      }
+      
+      if (failureCount > 0) {
+        showWarning(`${failureCount} item(s) could not be synced. Please add them manually. ⚠️`);
+      }
+      
+      console.log(`Cart migration completed: ${successCount} success, ${failureCount} failures`);
     } catch (error) {
       console.error('Error migrating guest cart to backend:', error);
-      // Keep guest cart in localStorage if migration fails
       showWarning('Some items could not be synced to your account. They remain in your local cart. ⚠️');
-      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Some items could not be synced to your account' });
+      dispatch({ type: CART_ACTIONS.SET_ERROR, payload: 'Cart sync failed. Please try adding items manually.' });
+    } finally {
+      dispatch({ type: CART_ACTIONS.SET_SYNCING, payload: false });
     }
   }, [authenticatedFetch, retryOperation, showInfo, showSuccess, showWarning]);
 
@@ -307,26 +334,41 @@ export const CartProvider = ({ children }) => {
 
   // Handle logout - clear backend cart reference but keep local items for guest mode
   useEffect(() => {
-    if (!user && state.items.length > 0) {
-      // User logged out, save current cart items to localStorage for guest mode
-      const cartData = {
-        items: state.items,
-        selectedItems: Array.from(state.selectedItems)
-      };
-      localStorage.setItem('ecofinds-cart', JSON.stringify(cartData));
+    // Only save to localStorage on logout (when user was previously authenticated)
+    if (!user && state.items.length > 0 && !state.loading) {
+      try {
+        const cartData = {
+          items: state.items,
+          selectedItems: Array.from(state.selectedItems),
+          fromLogout: true, // Flag indicating this came from logout
+          timestamp: Date.now()
+        };
+        localStorage.setItem('ecofinds-cart', JSON.stringify(cartData));
+        console.log('Cart preserved in localStorage after logout');
+      } catch (error) {
+        console.error('Failed to preserve cart after logout:', error);
+      }
     }
-  }, [user, state.items, state.selectedItems]);
+  }, [user, state.items, state.selectedItems, state.loading]);
 
   // Save cart to localStorage whenever items change (for guest users)
   useEffect(() => {
-    if (!user && state.items.length > 0) {
-      const cartData = {
-        items: state.items,
-        selectedItems: Array.from(state.selectedItems)
-      };
-      localStorage.setItem('ecofinds-cart', JSON.stringify(cartData));
+    if (!user && !state.loading && state.items.length > 0) {
+      try {
+        const cartData = {
+          items: state.items,
+          selectedItems: Array.from(state.selectedItems),
+          timestamp: Date.now() // Add timestamp for debugging
+        };
+        localStorage.setItem('ecofinds-cart', JSON.stringify(cartData));
+      } catch (error) {
+        console.error('Failed to save cart to localStorage:', error);
+      }
+    } else if (!user && !state.loading && state.items.length === 0) {
+      // Clear localStorage if cart is empty
+      localStorage.removeItem('ecofinds-cart');
     }
-  }, [state.items, state.selectedItems, user]);
+  }, [state.items, state.selectedItems, user, state.loading]);
 
   // Cart actions
   const addToCart = async (product, quantity = 1) => {

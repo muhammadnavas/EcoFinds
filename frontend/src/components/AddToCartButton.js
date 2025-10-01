@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
 const AddToCartButton = ({ product, productId, className = "", size = "medium" }) => {
-  const { addToCart, getItemQuantity, updateQuantity, getItemState } = useCart();
+  const { addToCart, getItemQuantity, updateQuantity, getItemState, syncing } = useCart();
+  const { user } = useAuth();
   const [isAdding, setIsAdding] = useState(false);
   
   // Support both product object and productId
@@ -21,7 +23,11 @@ const AddToCartButton = ({ product, productId, className = "", size = "medium" }
     try {
       // If we have the full product object, use it; otherwise create minimal object
       const productToAdd = product || { _id: id };
-      await addToCart(productToAdd);
+      const result = await addToCart(productToAdd);
+      
+      if (!result?.success) {
+        console.error('Failed to add to cart:', result?.error);
+      }
     } catch (error) {
       console.error('Failed to add to cart:', error);
     } finally {
@@ -34,7 +40,10 @@ const AddToCartButton = ({ product, productId, className = "", size = "medium" }
 
   const handleQuantityChange = async (newQuantity) => {
     try {
-      await updateQuantity(id, newQuantity);
+      const result = await updateQuantity(id, newQuantity);
+      if (!result?.success) {
+        console.error('Failed to update quantity:', result?.error);
+      }
     } catch (error) {
       console.error('Failed to update quantity:', error);
     }
@@ -129,19 +138,27 @@ const AddToCartButton = ({ product, productId, className = "", size = "medium" }
   };
 
   return (
-    <button
-      onClick={handleAddToCart}
-      disabled={isAdding || itemState.loading}
-      className={`
-        rounded-lg transition-all duration-200 transform
-        ${getButtonStyles()}
-        disabled:opacity-50 disabled:cursor-not-allowed
-        ${sizeClasses[size]}
-        ${className}
-      `}
-    >
-      {getButtonContent()}
-    </button>
+    <div className="relative">
+      <button
+        onClick={handleAddToCart}
+        disabled={isAdding || itemState.loading || syncing}
+        className={`
+          rounded-lg transition-all duration-200 transform
+          ${getButtonStyles()}
+          disabled:opacity-50 disabled:cursor-not-allowed
+          ${sizeClasses[size]}
+          ${className}
+        `}
+      >
+        {getButtonContent()}
+      </button>
+      
+      {/* Show user status indicator */}
+      {!user && (
+        <div className="absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-white" 
+             title="Guest mode - cart will be saved locally"></div>
+      )}
+    </div>
   );
 };
 
