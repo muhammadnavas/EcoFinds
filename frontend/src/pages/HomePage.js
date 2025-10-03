@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AddToCartButton from '../components/AddToCartButton';
 import AdvancedFilters from '../components/AdvancedFilters';
@@ -74,7 +74,7 @@ const HomePage = ({ refreshTrigger }) => {
 
   useEffect(() => {
     filterProducts();
-  }, [products, searchQuery, selectedCategory, filters]);
+  }, [filterProducts]);
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -82,26 +82,30 @@ const HomePage = ({ refreshTrigger }) => {
       const response = await fetch('http://localhost:5000/api/products');
       if (response.ok) {
         const data = await response.json();
-        setProducts(data);
+        // Ensure data is always an array
+        setProducts(Array.isArray(data) ? data : []);
       } else {
         console.error('Failed to fetch products');
+        setProducts([]);
       }
     } catch (error) {
       console.error('Error fetching products:', error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterProducts = () => {
-    let filtered = products;
+  const filterProducts = useCallback(() => {
+    // Ensure products is always an array before filtering
+    let filtered = Array.isArray(products) ? products : [];
 
     // Search query filter
     if (searchQuery) {
       filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchQuery.toLowerCase())
+        product.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.category?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -112,13 +116,13 @@ const HomePage = ({ refreshTrigger }) => {
 
     // Advanced filters
     filtered = filtered.filter(product => {
-      const price = parseFloat(product.price);
+      const price = parseFloat(product.price) || 0;
       const inPriceRange = price >= filters.priceRange[0] && price <= filters.priceRange[1];
       const matchesCondition = filters.condition === 'all' || product.condition === filters.condition;
       const matchesLocation = !filters.location || product.location?.toLowerCase().includes(filters.location.toLowerCase());
       const matchesAvailability = filters.availability === 'all' || 
-        (filters.availability === 'available' && product.quantity > 0) ||
-        (filters.availability === 'sold' && product.quantity === 0);
+        (filters.availability === 'available' && (product.quantity || 0) > 0) ||
+        (filters.availability === 'sold' && (product.quantity || 0) === 0);
       const matchesRating = !filters.rating || (product.rating && product.rating >= filters.rating);
 
       return inPriceRange && matchesCondition && matchesLocation && matchesAvailability && matchesRating;
@@ -127,25 +131,25 @@ const HomePage = ({ refreshTrigger }) => {
     // Sort products
     switch (filters.sortBy) {
       case 'price-low':
-        filtered.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+        filtered.sort((a, b) => (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0));
         break;
       case 'price-high':
-        filtered.sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
+        filtered.sort((a, b) => (parseFloat(b.price) || 0) - (parseFloat(a.price) || 0));
         break;
       case 'rating':
         filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case 'oldest':
-        filtered.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        filtered.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
         break;
       case 'newest':
       default:
-        filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         break;
     }
 
     setFilteredProducts(filtered);
-  };
+  }, [products, searchQuery, selectedCategory, filters]);
 
   const handleSearch = (query) => {
     setSearchQuery(query);

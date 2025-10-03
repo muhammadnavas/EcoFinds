@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import Categories from '../components/Categories';
 
 const CategoriesPage = () => {
   const navigate = useNavigate();
@@ -164,13 +163,7 @@ const CategoriesPage = () => {
         </div>
       )}
 
-      {/* Main Categories Component */}
-      <Categories 
-        onBack={handleBack} 
-        onShowProduct={handleShowProduct}
-        selectedCategory={selectedCategory}
-        onCategorySelect={handleCategorySelect}
-      />
+
 
       {/* Call to Action */}
       <div className="bg-green-600 py-8">
