@@ -58,24 +58,6 @@ const HomePage = ({ refreshTrigger }) => {
   const handleShowWishlist = () => navigate('/wishlist');
   const handleShowProduct = (productId) => navigate(`/product/${productId}`);
 
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  useEffect(() => {
-    fetchProducts();
-  }, [refreshTrigger]);
-
-  useEffect(() => {
-    filterProducts();
-  }, [filterProducts]);
-
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -150,6 +132,24 @@ const HomePage = ({ refreshTrigger }) => {
 
     setFilteredProducts(filtered);
   }, [products, searchQuery, selectedCategory, filters]);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [refreshTrigger]);
+
+  useEffect(() => {
+    filterProducts();
+  }, [filterProducts]);
 
   const handleSearch = (query) => {
     setSearchQuery(query);
