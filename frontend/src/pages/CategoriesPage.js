@@ -11,7 +11,7 @@ const CategoriesPage = () => {
     electronics: {
       name: 'Electronics',
       icon: '📱',
-      description: 'Sustainable tech products, refurbished devices, and eco-friendly electronics',
+      description: 'Sustainable products, refurbished devices, and eco-friendly electronics',
       color: 'blue',
       subcategories: ['Smartphones', 'Laptops', 'Tablets', 'Smart Home', 'Accessories']
     },
