@@ -2,8 +2,6 @@
 
 **EcoFinds** is a modern, sustainable marketplace built with React and Node.js where users can buy and sell eco-friendly products. The platform promotes circular economy principles by giving pre-owned items a second life while connecting environmentally conscious buyers and sellers.
 
-![EcoFinds Logo](./frontend/public/logo192.png)
-
 ## 🚀 Features
 
 ### 🛒 **Core Marketplace Functionality**
@@ -232,41 +230,6 @@ We welcome contributions! Here's how to get started:
 - Follow React best practices
 - Write meaningful commit messages
 - Add comments for complex logic
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-### **Getting Help**
-- **Documentation** - Check this README and inline comments
-- **Issues** - Open an issue on GitHub
-- **Discussions** - Use GitHub Discussions for questions
-- **Email** - Contact support@ecofinds.com
-
-### **Common Issues**
-
-**Q: Cannot connect to database**
-```bash
-# Make sure MongoDB is running
-mongod
-# Or check your MONGODB_URI in .env
-```
-
-**Q: Port already in use**
-```bash
-# Kill process on port 3000/5000
-npx kill-port 3000
-npx kill-port 5000
-```
-
-**Q: Build fails**
-```bash
-# Clear node_modules and reinstall
-rm -rf node_modules package-lock.json
-npm install
-```
 
 ## 📊 Project Statistics
 
